@@ -1,4 +1,5 @@
 {
+  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && cd .. && grep -q \"<string>org.sticksandstrings.earshot</string>\" EarshotApp/Info.plist && grep -q \"identifier \\\"org.sticksandstrings.earshot\\\"\" EarshotApp/build.sh && test -z \"$(git grep -lF com.gaberger.earshot -- . \":!docs/adrs\" \":!docs/releases\" \":!.hexa\" \":!docs/INSTALL.md\" \":!packaging/homebrew\" \":!EarshotApp/PreferencesMigration.swift\" \":!EarshotApp/Tests/PreferencesMigrationTests.swift\")\"",
   "sessions": {
     "10bfdb96-8c1b-46ac-ad63-2e3bcba7d177": {
       "adr": "ADR-2611101015",
@@ -367,5 +368,7 @@
       ],
       "updated": "2026-11-05T18:30:34.540544+00:00"
     }
-  }
+  },
+  "stage": "gate",
+  "updated": "2026-11-14T22:29:50.157743+00:00"
 }

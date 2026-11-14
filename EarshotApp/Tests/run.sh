@@ -47,6 +47,9 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Tool
 # HighlightTests also uses @main and fails itself if fewer than 30 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift WindowHighlight.swift Tests/HighlightTests.swift -o "$out/highlight-tests"
 "$out/highlight-tests"
+# PreferencesMigrationTests: settings under the old bundle IDs are copied once; fails itself if fewer than 17 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library PreferencesMigration.swift Tests/PreferencesMigrationTests.swift -o "$out/prefs-migration-tests"
+"$out/prefs-migration-tests"
 # SubmitTests also uses @main and fails itself if fewer than 15 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift Tests/SubmitTests.swift -o "$out/submit-tests"
 "$out/submit-tests"

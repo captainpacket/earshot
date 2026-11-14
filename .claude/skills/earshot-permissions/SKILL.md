@@ -9,7 +9,7 @@ description: Why macOS permissions (Accessibility, Microphone) stop working for 
 
 `codesign --sign -` (ad hoc) identifies the app to macOS by the **hash of the exact binary**, so every
 build looked like a new app and its Accessibility grant went stale. `EarshotApp/build.sh` now signs with
-the requirement `designated => identifier "com.gaberger.earshot"`, which does not change between builds.
+the requirement `designated => identifier "org.sticksandstrings.earshot"`, which does not change between builds.
 Check it: `codesign -d -r- ~/Applications/Earshot.app` must not mention `cdhash`.
 
 ## Diagnose with the log, not by guessing
@@ -23,7 +23,7 @@ build. Toggling it off and on does not replace the saved requirement.
 
 ## Fix
 
-`tccutil reset Accessibility com.gaberger.earshot`, then switch Earshot on in System Settings → Privacy &
+`tccutil reset Accessibility org.sticksandstrings.earshot`, then switch Earshot on in System Settings → Privacy &
 Security → Accessibility. The app has a **Reset and allow** button that does the same
 (`DictationService.resetAccessibilityPermission`). Without Accessibility, dictation puts the text on the
 clipboard so nothing is lost.

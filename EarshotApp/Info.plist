@@ -27,7 +27,7 @@
 	<key>CFBundleIconName</key>
 	<string>Earshot</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.gaberger.earshot</string>
+	<string>org.sticksandstrings.earshot</string>
 	<key>CFBundleName</key>
 	<string>Earshot</string>
 	<key>CFBundlePackageType</key>

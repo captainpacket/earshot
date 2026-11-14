@@ -32,7 +32,8 @@ Earshot's notifications.
 - The signing identity changes once, from ad hoc to Developer ID. The old TCC entries were stored
   against `identifier "com.gaberger.earshot"`, which the new signature still satisfies, so the
   Microphone and Accessibility permissions should carry over. If macOS asks again, that happens one
-  time only.
+  time only. *(Amended by ADR-2611142000: the bundle ID is now `org.sticksandstrings.earshot`, so
+  permissions are granted once more with the first Developer ID release.)*
 - Releases depend on an Apple Developer Program membership and five repository secrets.
 
 ## Gate
