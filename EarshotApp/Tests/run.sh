@@ -28,7 +28,7 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dict
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library SearchIndex.swift Tests/SearchTests.swift -o "$out/search-tests"
 "$out/search-tests"
 # DictationLogTests also uses @main and fails itself if fewer than 17 checks ran.
-swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library DictationLog.swift Tests/DictationLogTests.swift -o "$out/dictation-log-tests"
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library PrivateFiles.swift DictationLog.swift Tests/DictationLogTests.swift -o "$out/dictation-log-tests"
 "$out/dictation-log-tests"
 # NoteSessionTests also uses @main and fails itself if fewer than 17 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift NoteSession.swift Tests/NoteSessionTests.swift -o "$out/note-session-tests"
@@ -50,6 +50,13 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dict
 # PreferencesMigrationTests: settings under the old bundle IDs are copied once; fails itself if fewer than 17 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library PreferencesMigration.swift Tests/PreferencesMigrationTests.swift -o "$out/prefs-migration-tests"
 "$out/prefs-migration-tests"
+# HelperRunTests (ADR-2611072100 A1, A2): a hung helper is stopped with its children, and log lines never carry
+# helper output. Fails itself if fewer than 27 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library HelperRun.swift Tests/HelperRunTests.swift -o "$out/helper-run-tests"
+"$out/helper-run-tests"
+# PrivateFilesTests (ADR-2611072100 A3): notes.json, its folder and the log are owner-only. Fails itself if fewer than 15 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library PrivateFiles.swift DictationLog.swift Tests/PrivateFilesTests.swift -o "$out/private-files-tests"
+"$out/private-files-tests"
 # SubmitTests also uses @main and fails itself if fewer than 15 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift Tests/SubmitTests.swift -o "$out/submit-tests"
 "$out/submit-tests"

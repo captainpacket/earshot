@@ -276,7 +276,7 @@ final class Library: ObservableObject {
         }
         dictation.scriptPath = { [weak self] in self?.bin("transcribe") ?? "" }
         dictation.speakScriptPath = { [weak self] in self?.bin("earshot-speak") ?? "" }
-        dictation.runHelper = { await Library.run($0) }
+        dictation.runHelper = { await Library.run($0, timeout: HelperRun.clipTimeout).userMessage }
         dictation.log = { [weak self] in self?.log($0) }
         dictation.tidy = { text in
             let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
@@ -288,7 +288,7 @@ final class Library: ObservableObject {
         noteRecorder.isMeetingRecording = { [weak self] in self?.recording ?? false }
         noteRecorder.isDictationBusy = { [weak self] in self?.dictation.isBusy ?? false }
         noteRecorder.scriptPath = { [weak self] in self?.bin("transcribe") ?? "" }
-        noteRecorder.runHelper = { await Library.run($0) }
+        noteRecorder.runHelper = { await Library.run($0, timeout: HelperRun.clipTimeout).userMessage }
         noteRecorder.microphoneID = { UserDefaults.standard.string(forKey: MicRecorder.settingKey) ?? "" }
         noteRecorder.log = { [weak self] in self?.log($0) }
         noteRecorder.onNotice = { [weak self] in self?.notice = $0 }
@@ -429,7 +429,7 @@ final class Library: ObservableObject {
             log("recording started with \(r.deviceName): \(url.path)")
         } catch {
             notice = "Could not start recording: \(error.localizedDescription)"
-            log("recording failed: \(error)")
+            log("recording failed: \(Self.logDescription(error))")
         }
     }
 
@@ -611,11 +611,12 @@ final class Library: ObservableObject {
 
         let args = [bin("transcribe")] + (translate ? ["-t"] : []) + [path]
 
+        let audio = dir.appendingPathComponent(id)
         Task {
-            let failure = await Self.run(args)
+            let outcome = await Self.run(args, timeout: await Self.jobTimeout(audio))
             transcribing.remove(id)
-            log("transcribe finished: \(failure ?? "ok")")
-            if let failure {
+            log(outcome.logLine("transcribe"))
+            if let failure = outcome.userMessage {
                 errors[id] = "Transcription failed:\n\(failure)"
                 return
             }
@@ -644,32 +645,25 @@ final class Library: ObservableObject {
         return home.appendingPathComponent(".local/bin/\(name)").path
     }
 
-    /// Runs a helper script off the main thread. Returns nil on success, or the last lines of its error output.
-    nonisolated static func run(_ args: [String]) async -> String? {
-        await Task.detached {
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            p.arguments = args
-            // The helpers use the tools bundled in the app. Homebrew stays on PATH only as the fallback
-            // for files AVFoundation can't decode (ffmpeg, for Ogg and WebM) and for source builds.
-            var env = ProcessInfo.processInfo.environment
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-            p.environment = env
-            let err = Pipe()
-            p.standardError = err
-            p.standardOutput = FileHandle.nullDevice
-            do {
-                try p.run()
-                let errData = err.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                guard p.terminationStatus != 0 else { return nil }
-                let lines = String(decoding: errData, as: UTF8.self).split(separator: "\n")
-                return lines.suffix(3).joined(separator: "\n")
-            } catch {
-                return error.localizedDescription
-            }
-        }.value
+    /// Runs a helper off the main thread, stopping it (and what it started) after `timeout` seconds.
+    nonisolated static func run(_ args: [String], timeout: TimeInterval) async -> HelperOutcome {
+        // The helpers use the tools bundled in the app. Homebrew stays on PATH only as the fallback
+        // for files AVFoundation can't decode (ffmpeg, for Ogg and WebM) and for source builds.
+        var env = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        return await HelperRun.run(["/usr/bin/env"] + args, timeout: timeout, environment: env)
+    }
+
+    /// The time limit for a job on this recording, from its length (ADR-2611072100 A1).
+    nonisolated static func jobTimeout(_ audio: URL) async -> TimeInterval {
+        HelperRun.timeout(audioSeconds: try? await AVURLAsset(url: audio).load(.duration).seconds)
+    }
+
+    /// An error for the log: its domain and code, never its description, which can quote what was said.
+    nonisolated static func logDescription(_ error: Error) -> String {
+        let ns = error as NSError
+        return "\(ns.domain) \(ns.code)"
     }
 
     // MARK: Speakers
@@ -694,11 +688,12 @@ final class Library: ObservableObject {
         log("finding speakers: \(id)")
         let count = count ?? UserDefaults.standard.integer(forKey: Prefs.speakerCount)
         let args = [bin("speakers"), path] + (count > 1 ? ["-n", String(count)] : [])
+        let audio = dir.appendingPathComponent(id)
         Task {
-            let failure = await Self.run(args)
+            let outcome = await Self.run(args, timeout: await Self.jobTimeout(audio))
             findingSpeakers.remove(id)
-            log("speakers finished: \(failure ?? "ok")")
-            if let failure {
+            log(outcome.logLine("speakers"))
+            if let failure = outcome.userMessage {
                 errors[id] = "Speaker detection failed:\n\(failure)"
             }
             if selection == id { loadSelected() }
@@ -808,7 +803,7 @@ final class Library: ObservableObject {
                 // The earlier summary is still there, with the old names.
                 if let renames = pendingRenames.removeValue(forKey: id) { renameInSummary(id, renames: renames) }
                 errors[id] = "Summary failed: \(Summarizer.describe(error))"
-                log("summary failed: \(error)")
+                log("summary failed: \(Self.logDescription(error))")
             }
         }
     }
@@ -905,14 +900,8 @@ final class Library: ObservableObject {
 
     func log(_ message: String) {
         let url = home.appendingPathComponent("Library/Logs/Earshot.log")
-        let line = "\(Date().formatted(.iso8601)) \(message)\n"
-        if let h = try? FileHandle(forWritingTo: url) {
-            h.seekToEndOfFile()
-            h.write(Data(line.utf8))
-            try? h.close()
-        } else {
-            try? line.write(to: url, atomically: true, encoding: .utf8)
-        }
+        // Owner-only, and a symlink in its place is not followed (ADR-2611072100 A3).
+        PrivateFiles.appendLine("\(Date().formatted(.iso8601)) \(message)\n", to: url)
     }
 }
 

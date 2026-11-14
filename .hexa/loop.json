@@ -1,5 +1,6 @@
 {
-  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && cd .. && grep -q \"<string>org.sticksandstrings.earshot</string>\" EarshotApp/Info.plist && grep -q \"identifier \\\"org.sticksandstrings.earshot\\\"\" EarshotApp/build.sh && test -z \"$(git grep -lF com.gaberger.earshot -- . \":!docs/adrs\" \":!docs/releases\" \":!.hexa\" \":!docs/INSTALL.md\" \":!packaging/homebrew\" \":!EarshotApp/PreferencesMigration.swift\" \":!EarshotApp/Tests/PreferencesMigrationTests.swift\")\"",
+  "adr": "ADR-2611072100",
+  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && grep -q HelperRunTests Tests/run.sh && grep -q PrivateFilesTests Tests/run.sh && ! grep -nE \"log\\(\\\"[a-z]+ (finished|failed): \\\\\\\\\\((failure|error)\" *.swift",
   "sessions": {
     "10bfdb96-8c1b-46ac-ad63-2e3bcba7d177": {
       "adr": "ADR-2611101015",
@@ -370,5 +371,22 @@
     }
   },
   "stage": "gate",
-  "updated": "2026-11-14T22:29:50.157743+00:00"
+  "tasks": [
+    {
+      "done_at": "2026-11-14T23:46:08.807894+00:00",
+      "status": "done",
+      "title": "HelperRun: helpers time out, their child processes die, log lines never carry helper output (A1, A2)"
+    },
+    {
+      "done_at": "2026-11-14T23:46:08.816595+00:00",
+      "status": "done",
+      "title": "PrivateFiles: notes.json, its folder and Earshot.log are owner-only (A3)"
+    },
+    {
+      "done_at": "2026-11-14T23:46:08.825126+00:00",
+      "status": "done",
+      "title": "Wire into Library, summary log line, docs, ADR status"
+    }
+  ],
+  "updated": "2026-11-14T23:46:08.825211+00:00"
 }

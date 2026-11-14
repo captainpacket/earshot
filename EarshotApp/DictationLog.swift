@@ -38,16 +38,12 @@ struct DictationLog: Equatable {
 
     @discardableResult
     func save(to url: URL) -> Bool {
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(entries).write(to: url, options: .atomic)
-            return true
-        } catch {
-            return false
-        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(entries) else { return false }
+        // Owner-only file in an owner-only folder (ADR-2611072100 A3).
+        return PrivateFiles.writeAtomically(data, to: url)
     }
 
     static func load(from url: URL) -> DictationLog {

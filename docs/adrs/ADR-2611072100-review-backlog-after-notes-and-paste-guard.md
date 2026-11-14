@@ -17,6 +17,13 @@ by ⌘K. README, Settings and Help wording corrected where they promised more th
 ## Decision: do these, in this order, each as its own gated change
 
 ### A. Safety and privacy (first)
+
+*Done 2026-11-14:* A1 (`HelperRun`: a time limit from the recording's length, 15 minutes at least,
+two minutes for a clip; on timeout the helper and its child processes get SIGTERM, then SIGKILL), A2 (log
+lines carry the helper's name and exit code, or an error's domain and code, never its text) and A3
+(`PrivateFiles`: `Earshot.log` and `notes.json` are 600, the notes folder 700). Gated by `HelperRunTests`
+and `PrivateFilesTests`.
+
 1. `Library.run` has no timeout and blocks a thread on a stuck helper (`Earshot.swift`, the run function).
 2. Logs: `Earshot.swift` logs `\(error)` and the last stderr lines of the helpers at three places; log a
    fixed message and the exit code, keep the tail for the UI only.
