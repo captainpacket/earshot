@@ -36,3 +36,8 @@ whisper-header-backup/
 
 .DS_Store
 *.dmg
+
+# Native pieces fetched and built by EarshotApp/vendor.sh
+EarshotApp/.vendor/
+
+__pycache__/

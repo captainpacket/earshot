@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Writes the Homebrew cask for a release (ADR-2611141900).
+#
+#   scripts/update-cask <version> <path to Earshot-<version>.dmg> [OUT]
+#
+# OUT defaults to stdout. CI runs this after publishing a release and pushes the file to
+# github.com/gaberger/homebrew-earshot as Casks/earshot.rb. The hash is of the exact DMG that was
+# published, so `brew install` refuses anything else.
+set -euo pipefail
+die() { echo "update-cask: $*" >&2; exit 1; }
+
+version=${1:-}; dmg=${2:-}; out=${3:-/dev/stdout}
+[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "usage: update-cask <X.Y.Z> <dmg> [out]"
+[[ -f $dmg ]] || die "no DMG at $dmg"
+[[ $(basename "$dmg") == "Earshot-$version.dmg" ]] || die "$dmg is not Earshot-$version.dmg"
+
+sha=$(shasum -a 256 "$dmg" | cut -d' ' -f1)
+template="$(cd "$(dirname "$0")/.." && pwd)/packaging/homebrew/earshot.rb.template"
+cask=$(sed -e "s/@VERSION@/$version/" -e "s/@SHA256@/$sha/" "$template")
+[[ $cask != *@VERSION@* && $cask != *@SHA256@* ]] || die "unfilled placeholder in the cask"
+printf '%s\n' "$cask" > "$out"

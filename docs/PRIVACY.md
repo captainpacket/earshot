@@ -13,9 +13,10 @@ and results, never what was said.
 ## What can leave the Mac, or be seen
 
 
-- **One-time downloads.** The speech models, the speaker packages (`sherpa-onnx`, fetched by `uv` the
-  first time speakers are detected) and Apple's on-device model are downloaded once. After that,
-  nothing needs the internet.
+- **One-time downloads.** The speech and speaker models are fetched by Earshot from Hugging Face and
+  GitHub only when you click **Download**, each checked against a fixed SHA-256, with nothing about
+  you sent. Apple's on-device model is downloaded by macOS. The tools that run the models are inside
+  the app. After that, nothing needs the internet.
 - **The clipboard.** When dictated text cannot be typed safely (Earshot is not allowed to type, or you
   switched windows), it is left on the clipboard. It stays there until you copy something else, and a
   clipboard-history tool may record it.

@@ -40,8 +40,10 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dict
 python3 -I ../scripts/earshot-mcp-test
 # earshot-mcp hardening: hostile filesystem and protocol input; it fails itself if fewer than 100 checks ran.
 python3 -I ../scripts/earshot-mcp-hardening-test
-# speakers: the transcript rewrite must be atomic (readers see old or new, never partial); fails itself if fewer than 7 checks ran.
-python3 -I ../scripts/speakers-test
+# SpeakerMergeTests (ADR-2611141800): the native speakers tool matches the Python oracle byte for byte, and its
+# transcript rewrite is atomic (readers see old or new, never partial). Fails itself if fewer than 25 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Tools/AudioDecode.swift Tools/SpeakerMerge.swift Tests/SpeakerMergeTests.swift -o "$out/speaker-merge-tests"
+"$out/speaker-merge-tests"
 # HighlightTests also uses @main and fails itself if fewer than 30 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift WindowHighlight.swift Tests/HighlightTests.swift -o "$out/highlight-tests"
 "$out/highlight-tests"
@@ -77,3 +79,6 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Reco
 # CallOfferPanelTests (ADR-2611130933) also uses @main and fails itself if fewer than 10 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library CallStart.swift Tests/CallOfferPanelTests.swift -o "$out/call-offer-panel-tests"
 "$out/call-offer-panel-tests"
+# ModelCatalogTests (ADR-2611141630) also uses @main and fails itself if fewer than 25 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library ModelCatalog.swift Tests/ModelCatalogTests.swift -o "$out/model-catalog-tests"
+"$out/model-catalog-tests"

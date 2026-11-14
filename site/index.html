@@ -39,6 +39,14 @@
         <a class="btn btn-ghost" href="https://github.com/gaberger/earshot">View on GitHub</a>
       </p>
       <p class="req">Requires a Mac with Apple silicon and macOS 26.4 or later.</p>
+      <div class="start" id="start">
+        <h2 class="start-h">Get started in one step</h2>
+        <p><strong>With Homebrew,</strong> paste this into Terminal:</p>
+        <pre><code>brew tap gaberger/earshot &amp;&amp; brew install --cask earshot</code></pre>
+        <p><strong>Or ask your coding agent.</strong> Paste this prompt into Claude Code, Codex or any agent that can run commands on your Mac:</p>
+        <pre class="prompt"><code>Install Earshot on this Mac (https://gaberger.github.io/earshot/). If Homebrew is installed, run: brew tap gaberger/earshot, then brew install --cask earshot. Otherwise download the latest Earshot .dmg from https://github.com/gaberger/earshot/releases/latest and copy Earshot.app into /Applications. Then open Earshot, and tell me to click Download in the app for the speech models and to allow the microphone when macOS asks.</code></pre>
+        <p class="start-after">Then open Earshot and click <strong>Download</strong>. It fetches the speech models once (1.7 GB), and after that nothing needs the internet.</p>
+      </div>
       <figure class="shot hero-shot">
         <img src="img/recordings-home.png" width="760" height="640" alt="Earshot's recordings list in a dark window: meetings grouped by day with durations and transcribed or summarized status, and a red Record button with an Import button at the bottom.">
         <figcaption>The Recordings home screen lists recordings by day with their length and status, with Import and Record buttons at the bottom. One entry spins while it transcribes and one shows an error in orange.
@@ -184,43 +192,25 @@
       <p class="secno" aria-hidden="true">06</p>
       <h2 id="inst-h">Install</h2>
       <h3 class="sub">Install Earshot</h3>
-      <p class="need"><strong>You need:</strong> a Mac with Apple silicon (M1 or later), macOS 26.4 or later, Apple Intelligence turned on (for summaries), Homebrew, and about 3 GB of free disk space for the models.</p>
+      <p class="need"><strong>You need:</strong> a Mac with Apple silicon (M1 or later), macOS 26.4 or later, Apple Intelligence turned on (for summaries), and about 3 GB of free disk space for the models. Nothing else: the app carries its own tools.</p>
       <ol class="inst">
-        <li>
-          <h4>Install the tools</h4>
-          <pre><code>brew install whisper-cpp ffmpeg uv</code></pre>
-        </li>
-        <li>
-          <h4>Download the models.</h4>
-          <pre><code># Speech to text
-mkdir -p ~/Models/whisper &amp;&amp; cd ~/Models/whisper
-curl -LO https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin   # 1.6 GB, required
-curl -LO https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin      # 1 MB, skips silence
-curl -LO https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin     # 1.1 GB, only for Translate
-
-# Speaker labels
-mkdir -p ~/Models/speakers &amp;&amp; cd ~/Models/speakers
-curl -L https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 | tar xj
-curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx</code></pre>
-        </li>
         <li>
           <h4>Install the app. Choose one.</h4>
           <ul>
+            <li><strong>Homebrew.</strong> Run <code>brew tap gaberger/earshot</code>, then <code>brew install --cask earshot</code>. If Homebrew says the tap is not trusted, run <code>brew trust --tap gaberger/earshot</code> first.</li>
             <li><strong>Disk image.</strong> Download the .dmg from the <a href="https://github.com/gaberger/earshot/releases">latest release on GitHub</a>, open it, drag Earshot onto Applications, then eject it.</li>
-            <li><strong>Build from source.</strong> Needs Xcode. Run <code>git clone https://github.com/gaberger/earshot.git</code>, then <code>cd earshot</code>, then <code>bash EarshotApp/build.sh</code>. It installs Earshot.app in ~/Applications.</li>
+            <li><strong>Build from source.</strong> Needs Xcode and cmake. Run <code>git clone https://github.com/gaberger/earshot.git</code>, then <code>cd earshot</code>, then <code>bash EarshotApp/build.sh</code>. It installs Earshot.app in ~/Applications.</li>
           </ul>
         </li>
         <li>
-          <h4>Open it the first time.</h4>
-          <p>Earshot is not notarized by Apple, so macOS says it cannot check the disk image app. Click Done, open System Settings, then Privacy &amp; Security, scroll down and click Open Anyway. An app you built yourself opens normally.</p>
+          <h4>Open it.</h4>
+          <p>Earshot is signed and notarized by Apple, so it opens with a double-click. (Version 1.2.1 and earlier were not notarized. If macOS says it can't check Earshot, open System Settings, then Privacy &amp; Security, scroll down and click Open Anyway.)</p>
+        </li>
+        <li>
+          <h4>Click Download.</h4>
+          <p>A card at the top of Recordings downloads the speech and speaker models (1.7 GB) into ~/Models, checking each file against a fixed fingerprint. Translate needs one more model (1.1 GB), offered the first time you turn it on. After that nothing needs the internet.</p>
         </li>
       </ol>
-      <div class="note">
-        <h4>First speaker detection needs a download</h4>
-        <p>The first speaker detection downloads about 30 MB of Python packages (sherpa-onnx) into uv's cache. You can do it now while online:</p>
-        <pre><code>uv run --quiet --script /Applications/Earshot.app/Contents/Resources/speakers --help</code></pre>
-        <p>Use <code>~/Applications/Earshot.app</code> if you built from source. After that nothing needs the internet.</p>
-      </div>
       <h3 class="sub small">Permissions</h3>
       <p>The first time you record, macOS asks for the microphone; click Allow. Dictation also asks for Accessibility, which is what lets Earshot type for you. After an update, macOS may forget the Accessibility permission; switch Earshot off and on again in the Accessibility list.</p>
     </div>

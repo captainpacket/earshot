@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Ad hoc builds only (ADR-2611141800). The hardened runtime's library validation only loads a dylib
+  signed by the same team, and an ad hoc signature has no team, so `speakers` could not load the
+  bundled sherpa-onnx libraries ("mapping process and mapped file have different Team IDs").
+  A Developer ID build signs everything with one team and does not use this file.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

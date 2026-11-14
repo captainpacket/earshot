@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the hardened runtime, which notarization requires (ADR-2611141600).
+  Under the hardened runtime the microphone stays blocked unless the app asks for it here, on top of
+  the NSMicrophoneUsageDescription prompt. Without this key recordings come out silent, with no error.
+  Nothing else is needed: Earshot is not sandboxed, loads no plug-ins and does no JIT. Accessibility
+  (for dictation) is a TCC permission, not an entitlement.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>

@@ -27,6 +27,7 @@ phrases=(
   "spoken replies"
   "MCP"
   "agent"
+  "Download the speech models"
 )
 missing=0
 for p in "${phrases[@]}"; do
