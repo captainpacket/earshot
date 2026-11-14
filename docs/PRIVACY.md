@@ -8,7 +8,9 @@ Every model runs on this Mac. There is no account and no cloud, and Earshot neve
  Audio is recorded, transcribed (Whisper), labelled by speaker and
 summarized (Apple's on-device model) on this Mac. There is no account, no server and no analytics.
 Earshot itself sends nothing about you or your recordings anywhere. The activity log records steps
-and results, never what was said.
+and results, never what was said: when a tool fails, the log gets its name and exit code, and the
+error text, which can quote the recording, is shown in the app only. The log and the notes file can
+be read only by your macOS user account.
 
 ## What can leave the Mac, or be seen
 
