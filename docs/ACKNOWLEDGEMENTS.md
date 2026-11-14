@@ -20,13 +20,14 @@ These are the projects and models Earshot uses, with their licenses as we unders
 
 | Project | What Earshot uses it for | License |
 |---|---|---|
-| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and the Whisper models | Speech to text | MIT |
+| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and the Whisper models | Speech to text. `whisper-cli` is built from source and bundled in the app | MIT |
 | [Silero VAD](https://github.com/snakers4/silero-vad) | Skipping silence | MIT |
-| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | The runtime that finds who spoke when | Apache 2.0 |
+| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | The runtime that finds who spoke when. Its C library is bundled in the app | Apache 2.0 |
+| [ONNX Runtime](https://github.com/microsoft/onnxruntime) | Runs the speaker models for sherpa-onnx; bundled in the app | MIT |
 | pyannote segmentation 3.0 model | Splitting speech into speakers | MIT |
 | [WeSpeaker](https://github.com/wenet-e2e/wespeaker) | The speaker voice model | Apache 2.0 for the code. The terms of the specific trained model file are not checked. |
-| [uv](https://github.com/astral-sh/uv) | Runs the speaker script | Apache 2.0 |
-| ffmpeg | Converts audio and video | Installed separately through Homebrew and not bundled with Earshot, so its own license applies |
+| [uv](https://github.com/astral-sh/uv) | Ran the speaker script before 1.3, when speakers became native | Apache 2.0 |
+| ffmpeg | Optional: reads Ogg and WebM files, which macOS can't. Everything else is decoded by macOS itself | Installed separately through Homebrew and not bundled with Earshot, so its own license applies |
 | Apple Foundation Models | The on-device summaries and Tidy up | Apple terms |
 
 Earshot itself is MIT licensed, see [LICENSE](../LICENSE).

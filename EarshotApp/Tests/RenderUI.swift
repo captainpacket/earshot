@@ -282,6 +282,27 @@ func setUpDictationOn() {
                             Spacer()
                         }))
         }),
+        ("model-setup", {
+            // The first-run model download card (ADR-2611141630), in each state it can show.
+            let req = ModelCatalog.files(ModelCatalog.required)
+            return AnyView(VStack(alignment: .leading, spacing: 20) {
+                ModelSetupCard(models: ModelDownloader(previewState: .idle, missing: req))
+                ModelSetupCard(models: ModelDownloader(previewState: .downloading, missing: req,
+                                                       received: 643_000_000, total: ModelCatalog.totalBytes(req),
+                                                       current: "Speech to text"))
+                ModelSetupCard(models: ModelDownloader(previewState: .failed(ModelInstallError.http(503, "Speech to text").localizedDescription),
+                                                       missing: req))
+            }.padding(24).frame(width: 720).background(Color(nsColor: .windowBackgroundColor)))
+        }),
+        ("window-first-run", {
+            windowShell(section: .recordings, query: "", hits: [], showRecordBar: true,
+                        content: AnyView(VStack(spacing: 0) {
+                            ModelSetupCard(models: ModelDownloader(previewState: .idle,
+                                                                   missing: ModelCatalog.files(ModelCatalog.required)))
+                                .padding(.horizontal, 28).padding(.top, 20)
+                            HomeView(items: [], onOpen: { _ in })
+                        }))
+        }),
         ("window-search", {
             windowShell(section: .recordings, query: "roadmap", hits: sampleHits, showRecordBar: true,
                         content: AnyView(HomeView(items: sampleHomeItems(), onOpen: { _ in })))

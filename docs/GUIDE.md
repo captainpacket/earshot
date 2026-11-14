@@ -31,7 +31,7 @@ All screenshots in the [README](../README.md) show sample data and are renders o
 ```mermaid
 flowchart LR
     mic([Microphone]) --> wav[16 kHz WAV]
-    file([Audio / video file]) --> ff[ffmpeg]
+    file([Audio / video file]) --> ff["earshot-convert<br/>macOS AVFoundation"]
     ff --> wav
     wav --> whisper["whisper.cpp<br/>large-v3-turbo · Metal"]
     whisper --> words[Words + timings]
@@ -126,7 +126,9 @@ Earshot now has three separate functions: **Recordings** (meetings and calls), *
 
 ## Command line
 
-The scripts the app runs work on their own too:
+The tools the app runs work on their own too. A source build puts these commands in `~/.local/bin`;
+with the disk image, run them from the app: `/Applications/Earshot.app/Contents/Resources/transcribe`
+and `/Applications/Earshot.app/Contents/MacOS/speakers`.
 
 ```bash
 transcribe meeting.m4a          # → meeting.txt, .srt, .json

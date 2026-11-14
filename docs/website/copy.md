@@ -83,31 +83,19 @@ Connecting an agent is your choice.
 
 ### Install Earshot
 
-**You need:** a Mac with Apple silicon (M1 or later), macOS 26.4 or later, Apple Intelligence turned on (for summaries and the optional Tidy up), Homebrew, and about 3 GB of free disk space for the models.
+**You need:** a Mac with Apple silicon (M1 or later), macOS 26.4 or later, Apple Intelligence turned on (for summaries and the optional Tidy up), and about 3 GB of free disk space for the models. Nothing else: the app carries its own tools.
 
-**1. Install the tools**
+**Get started in one step** (also in the hero): with Homebrew, `brew tap gaberger/earshot && brew install --cask earshot`. Or paste a prompt into a coding agent that installs it for you (the exact text is in site/index.html, `#start`).
 
-    brew install whisper-cpp ffmpeg uv
+**1. Install the app. Choose one.**
 
-**2. Download the models.**
-
-    # Speech to text
-    mkdir -p ~/Models/whisper && cd ~/Models/whisper
-    curl -LO https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin   # 1.6 GB, required
-    curl -LO https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin      # 1 MB, skips silence
-    curl -LO https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin     # 1.1 GB, only for Translate
-
-    # Speaker labels
-    mkdir -p ~/Models/speakers && cd ~/Models/speakers
-    curl -L https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 | tar xj
-    curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx
-
-**3. Install the app. Choose one.**
-
+- **Homebrew.** `brew tap gaberger/earshot`, then `brew install --cask earshot`. If Homebrew says the tap is not trusted, run `brew trust --tap gaberger/earshot` first.
 - **Disk image.** Download the .dmg from the latest release on GitHub, open it, drag Earshot onto Applications, then eject it.
-- **Build from source.** Needs Xcode. Run `git clone https://github.com/gaberger/earshot.git`, then `cd earshot`, then `bash EarshotApp/build.sh`. It installs Earshot.app in ~/Applications.
+- **Build from source.** Needs Xcode and cmake. Run `git clone https://github.com/gaberger/earshot.git`, then `cd earshot`, then `bash EarshotApp/build.sh`. It installs Earshot.app in ~/Applications.
 
-**4. Open it the first time.** Earshot is not notarized by Apple, so macOS says it cannot check the app from the disk image. Click Done, open System Settings, then Privacy & Security, scroll down and click Open Anyway. An app you built yourself opens normally.
+**2. Open it.** Earshot is signed and notarized by Apple, so it opens with a double-click. (Version 1.2.1 and earlier were not notarized: click Open Anyway in System Settings → Privacy & Security.)
+
+**3. Click Download.** A card at the top of Recordings downloads the speech and speaker models (1.7 GB) into ~/Models, checking each file against a fixed fingerprint. Translate needs one more model (1.1 GB), offered the first time you turn it on.
 
 **Permissions.** The first time you record, macOS asks for the microphone; click Allow. Dictation also asks for Accessibility, which is what lets Earshot type for you. After an update, macOS may forget the Accessibility permission; switch Earshot off and on again in the Accessibility list.
 

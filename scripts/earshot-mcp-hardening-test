@@ -179,6 +179,9 @@ def run(root):
             f.write(b"bad name")
     except OSError:
         surrogate_made = False  # APFS refuses invalid UTF-8 names; nothing to list then
+    # Some filesystems (macOS 27 APFS, HFS+) store the byte escaped as "%FF", a valid UTF-8
+    # name that the server may list. Only a name that still holds the raw byte must be hidden.
+    raw_kept = surrogate_made and any(b"\xff" in n for n in os.listdir(os.fsencode(rec)))
     put("noperm.txt", "unreadable")
     os.chmod(os.path.join(rec, "noperm.txt"), 0)
     put("badutf.txt", "", "w")
@@ -199,7 +202,7 @@ def run(root):
     check("list: directory d.txt is absent", "d" not in ids, ids)
     check("list: empty-stem .txt is absent", "" not in ids and ".txt" not in ids, ids)
     check("list: a..b.txt is absent", "a..b" not in ids, ids)
-    check("list: surrogate-escaped name is absent", not any("\udcff" in i or i.startswith("sur") for i in ids), ids)
+    check("list: surrogate-escaped name is absent", not any("\udcff" in i for i in ids) and not (raw_kept and any(i.startswith("sur") for i in ids)), ids)
     check("list: chmod 000 file is skipped", "noperm" not in ids, ids)
     check("list: the plain recording is present", "good" in ids and "lnk" in ids and "big" in ids, ids)
     lnk = [x for x in rows if x["id"] == "lnk"][0]

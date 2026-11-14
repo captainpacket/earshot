@@ -24,7 +24,7 @@ struct EarshotApp: App {
 
     var body: some Scene {
         WindowGroup(id: MainWindow.id) {
-            ContentView(lib: library, nav: nav)
+            ContentView(lib: library, nav: nav, models: library.models)
                 .frame(minWidth: 1180, minHeight: 560)
                 // Files opened from Finder ("Open With", or dropped on the Dock icon).
                 .onOpenURL { library.importFile($0) }
@@ -243,11 +243,19 @@ final class Library: ObservableObject {
     let dictation = DictationService()
     let notes = NotesStore()
     let noteRecorder = NoteRecorder()
+    /// Downloads the speech and speaker models on first run (ADR-2611141630).
+    let models = ModelDownloader()
+    /// Recordings that could not be transcribed because a model was missing; transcribed once it arrives.
+    private var waitingForModels: Set<Recording.ID> = []
 
     init() {
         dir = home.appendingPathComponent("Recordings/whisper")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         log("Earshot \(AppVersion.display) started")
+        models.log = { [weak self] in self?.log($0) }
+        if models.needsRequired {
+            log("models missing: \(models.missingRequired.map(\.installedPath).joined(separator: ", "))")
+        }
         // Leftover temporary audio from a crashed or killed run; nothing can be capturing yet.
         let tmp = NSTemporaryDirectory()
         for name in (try? FileManager.default.contentsOfDirectory(atPath: tmp)) ?? []
@@ -583,6 +591,19 @@ final class Library: ObservableObject {
 
     func transcribe(_ id: Recording.ID) {
         guard !transcribing.contains(id) else { return }
+        models.refresh()
+        let needed: Set<ModelGroup> = translate ? [.speech, .translate] : [.speech]
+        let missing = ModelCatalog.missing(needed, root: models.root)
+        if !missing.isEmpty {
+            log("transcribe waiting for models: \(id) needs \(missing.map(\.installedPath).joined(separator: ", "))")
+            waitingForModels.insert(id)
+            errors[id] = missing.contains { $0.group == .translate } && !models.needsRequired
+                ? "Translate needs its model. Download it, or turn Translate off and transcribe again."
+                : "Download the speech models first, with Download at the top of Recordings. "
+                    + "This recording is transcribed as soon as they arrive."
+            return
+        }
+        waitingForModels.remove(id)
         let path = dir.appendingPathComponent(id).path
         log("transcribing: \(path)")
         transcribing.insert(id)
@@ -609,8 +630,13 @@ final class Library: ObservableObject {
         }
     }
 
-    /// A helper script: the copy inside the app (so a DMG install works on its own), else ~/.local/bin.
+    /// A helper: the copy inside the app (so a DMG install works on its own), else ~/.local/bin.
+    /// Native helpers (speakers) are in Contents/MacOS, scripts (transcribe) in Contents/Resources.
     func bin(_ name: String) -> String {
+        if let native = Bundle.main.url(forAuxiliaryExecutable: name),
+           FileManager.default.isExecutableFile(atPath: native.path) {
+            return native.path
+        }
         if let bundled = Bundle.main.url(forResource: name, withExtension: nil),
            FileManager.default.isExecutableFile(atPath: bundled.path) {
             return bundled.path
@@ -624,7 +650,8 @@ final class Library: ObservableObject {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             p.arguments = args
-            // Apps opened from Finder get a bare PATH; add Homebrew (ffmpeg, whisper-cli) and ~/.local/bin (uv).
+            // The helpers use the tools bundled in the app. Homebrew stays on PATH only as the fallback
+            // for files AVFoundation can't decode (ffmpeg, for Ogg and WebM) and for source builds.
             var env = ProcessInfo.processInfo.environment
             let home = FileManager.default.homeDirectoryForCurrentUser.path
             env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
@@ -654,6 +681,12 @@ final class Library: ObservableObject {
         guard FileManager.default.fileExists(atPath: (path as NSString).deletingPathExtension + ".json") else {
             errors[id] = "Transcribe this recording again first: speaker detection needs the word timings "
                 + "that newer transcriptions save."
+            return
+        }
+        if !ModelCatalog.missing([.speakers], root: models.root).isEmpty {
+            // Not an error worth a red box: the transcript is fine, it just has no names yet.
+            log("speakers skipped, models missing: \(id)")
+            summarize(id, automatic: true)
             return
         }
         findingSpeakers.insert(id)
@@ -861,6 +894,15 @@ final class Library: ObservableObject {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
+    /// A model download finished: transcribe what was waiting for it, if its models are now here.
+    func modelsArrived() {
+        models.refresh()
+        for id in waitingForModels where items.contains(where: { $0.id == id }) {
+            let needed: Set<ModelGroup> = translate ? [.speech, .translate] : [.speech]
+            if ModelCatalog.missing(needed, root: models.root).isEmpty { transcribe(id) }
+        }
+    }
+
     func log(_ message: String) {
         let url = home.appendingPathComponent("Library/Logs/Earshot.log")
         let line = "\(Date().formatted(.iso8601)) \(message)\n"
@@ -880,6 +922,12 @@ final class Library: ObservableObject {
 /// Returns nil when the process list can't be read; otherwise whether another process
 /// is capturing, plus the bundle ids (or pids, when there is no bundle id) for logging.
 enum OtherAppMicProbe {
+    /// Audio-routing daemons that hold the input open all the time, whether or not anyone is in a call.
+    /// Counting them made Earshot offer to record a "meeting" that was not happening, and kept a
+    /// recording from ever stopping itself. Rogue Amoeba's ARK daemon runs behind SoundSource,
+    /// Loopback and Audio Hijack.
+    nonisolated static let alwaysCapturingDaemons: Set<String> = ["com.rogueamoeba.arkaudiod"]
+
     nonisolated static func otherAppCapturing() -> (Bool, [String])? {
         guard let procs = capturingProcesses() else { return nil }
         let names = procs.map { $0.bundleID ?? "pid \($0.pid)" }
@@ -916,6 +964,7 @@ enum OtherAppMicProbe {
             var bundleAddress = address(kAudioProcessPropertyBundleID)
             if AudioObjectGetPropertyData(id, &bundleAddress, 0, nil, &bundleSize, &bundle) == noErr,
                let name = bundle?.takeRetainedValue() as String?, !name.isEmpty {
+                if alwaysCapturingDaemons.contains(name) { continue }
                 capturing.append((pid: pid, bundleID: name))
             } else {
                 capturing.append((pid: pid, bundleID: nil))
@@ -1241,7 +1290,7 @@ struct LevelBar: View {
 
 // MARK: - Resource meter
 
-/// Samples CPU and memory for this app plus its helper processes (bash, ffmpeg, whisper-cli),
+/// Samples CPU and memory for this app plus its helper processes (bash, whisper-cli, speakers),
 /// and how busy the GPU is. Whisper runs mostly on the GPU, so CPU alone would look idle.
 @MainActor
 final class ResourceMonitor: ObservableObject {
@@ -1384,7 +1433,7 @@ struct ResourceMeter: View {
         .font(.caption.monospacedDigit())
         .padding(.horizontal, 8)
         .help("""
-            CPU and MEM: this app plus Whisper and ffmpeg while they run (CPU as a share of the whole Mac).
+            CPU and MEM: this app plus Whisper and the speaker tool while they run (CPU as a share of the whole Mac).
             GPU: the whole Mac's graphics chip, where Whisper does most of its work.
             Summaries run inside a macOS system process, so they show in GPU but not in CPU or MEM.
             """)
@@ -1598,7 +1647,7 @@ struct HelpView: View {
                     AppIcon(size: 72)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Everything stays on this Mac").font(.title.bold())
-                        Text("Earshot has no account, no cloud service and no internet connection. "
+                        Text("Earshot has no account and no cloud service, and after the one-time model download it needs no internet. "
                              + "Your recordings, transcripts and summaries are made and kept on this computer.")
                             .foregroundStyle(.secondary)
                         Text("Earshot \(AppVersion.display)")
@@ -1610,6 +1659,14 @@ struct HelpView: View {
                 section("Try it yourself", "wifi.slash") {
                     para("Turn off Wi-Fi and record something. Transcription and summaries still work, "
                          + "because no step needs the internet.")
+                }
+
+                section("Download the speech models", "arrow.down.circle") {
+                    para("The first time you open Earshot, it asks to download its models (about 1.7 GB) into "
+                         + "~/Models. This is the only time Earshot uses the internet: it fetches the files from "
+                         + "Hugging Face and GitHub, checks each one against a fixed fingerprint (SHA-256), and "
+                         + "sends nothing about you. Translate needs one more model (1.1 GB), offered the first "
+                         + "time you turn Translate on.")
                 }
 
                 section("What does each job", "cpu") {
@@ -1626,7 +1683,11 @@ struct HelpView: View {
                          "Apple's on-device Foundation Model, part of Apple Intelligence. It runs inside macOS on this Mac. "
                          + "Earshot never uses Apple's Private Cloud Compute, the version that runs on Apple's servers.")
                     item("Audio conversion",
-                         "ffmpeg, which changes any audio or video file into the format Whisper reads.")
+                         "macOS itself (AVFoundation), which turns any audio or video file it can play into the format "
+                         + "Whisper reads. For Ogg and WebM, which macOS can't read, Earshot uses ffmpeg if it is installed.")
+                    item("Speakers",
+                         "sherpa-onnx with the pyannote and WeSpeaker voice models, built into the app. It finds who "
+                         + "spoke when and labels the transcript Speaker 1, Speaker 2.")
                 }
 
                 section("Where your files are", "folder") {
@@ -2054,6 +2115,8 @@ struct NotesPage: View {
 struct ContentView: View {
     @ObservedObject var lib: Library
     @ObservedObject var nav: Navigator
+    @ObservedObject var models: ModelDownloader
+    @State private var askTranslateModel = false
     @Environment(\.openWindow) private var openWindow
     @StateObject private var monitor = ResourceMonitor()
     @State private var dropTargeted = false
@@ -2132,6 +2195,15 @@ struct ContentView: View {
     }
 
     private var recordingsHome: some View {
+        VStack(spacing: 0) {
+            ModelSetupCard(models: models)
+                .padding(.horizontal, 28)  // lines up with HomeView's content
+                .padding(.top, models.needsRequired || models.state != .idle ? 20 : 0)
+            recordingsList
+        }
+    }
+
+    private var recordingsList: some View {
         var home = HomeView(items: homeItems, onOpen: { lib.selection = $0 })
         home.rowMenu = { item in
             AnyView(Group {
@@ -2154,6 +2226,9 @@ struct ContentView: View {
         if nav.section == .settings {
             ScrollView {
                 VStack(spacing: 0) {
+                    ModelSetupCard(models: models)
+                        .padding(.horizontal, 20)
+                        .padding(.top, models.needsRequired || models.state != .idle ? 20 : 0)
                     DictationSettingsView(onEnable: { DictationService.requestPermissions() },
                                           onResetPermission: { DictationService.resetAccessibilityPermission() })
                         .padding(.horizontal, 20)
@@ -2277,6 +2352,22 @@ struct ContentView: View {
         }
         .onChange(of: lib.selection) {
             if lib.selection != nil { nav.section = .recordings }
+        }
+        .onChange(of: models.finishedCount) { lib.modelsArrived() }
+        // Translate uses a second, 1.1 GB model that the first download leaves out. Offer it when needed.
+        .onChange(of: lib.translate) {
+            models.refresh()
+            if lib.translate && models.needsTranslate && !models.isDownloading { askTranslateModel = true }
+        }
+        .alert("Translate needs one more model", isPresented: $askTranslateModel) {
+            Button("Download (\(ModelCatalog.size(ModelCatalog.totalBytes(models.missingTranslate))))") {
+                models.download([.translate])
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Not Now", role: .cancel) { lib.translate = false }
+        } message: {
+            Text("The model that writes other languages in English is separate from the speech model. "
+                 + "It downloads once, and then Translate works offline.")
         }
         .onChange(of: lib.renaming) {
             newName = lib.items.first { $0.id == lib.renaming }?.title ?? ""
