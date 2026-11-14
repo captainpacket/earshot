@@ -65,7 +65,7 @@ final class DictationService: ObservableObject {
 
     /// Removes a stale Accessibility entry (left by an old build) and asks macOS again.
     static func resetAccessibilityPermission() {
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.gaberger.earshot"
+        let bundleID = Bundle.main.bundleIdentifier ?? "org.sticksandstrings.earshot"
         DispatchQueue.global(qos: .userInitiated).async {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")

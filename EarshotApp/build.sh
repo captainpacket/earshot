@@ -89,7 +89,7 @@ else
     fi
   done
   codesign --force --options runtime --entitlements "$entitlements" \
-    --sign - -r='designated => identifier "com.gaberger.earshot"' "$APP"
+    --sign - -r='designated => identifier "org.sticksandstrings.earshot"' "$APP"
 fi
 codesign --verify --strict --verbose=1 "$APP"
 # Tell Finder/Launchpad about the app (and its "Open With" file types), and give the terminal the same

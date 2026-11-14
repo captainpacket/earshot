@@ -23,7 +23,9 @@ cask "earshot" do
   # Models in ~/Models are left alone on purpose: other whisper.cpp tools may share them.
   zap trash: [
     "~/Library/Logs/Earshot.log",
+    "~/Library/Preferences/org.sticksandstrings.earshot.plist",
     "~/Library/Preferences/com.gaberger.earshot.plist",
+    "~/Library/Preferences/local.whisper.transcribe.plist",
   ]
 
   caveats <<~EOS

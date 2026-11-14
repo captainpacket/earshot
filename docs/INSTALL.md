@@ -132,7 +132,8 @@ Your recordings, summaries, models and settings stay where they are.
    rm -f ~/.local/bin/transcribe ~/.local/bin/speakers ~/.local/bin/earshot-speak  # terminal commands (source builds only)
    rm -rf ~/Models/whisper ~/Models/speakers             # models, about 3 GB
    rm -f ~/Library/Logs/Earshot.log                      # activity log
-   defaults delete com.gaberger.earshot                  # settings
+   defaults delete org.sticksandstrings.earshot          # settings
+   defaults delete com.gaberger.earshot 2>/dev/null      # settings from 1.2.1 and earlier
    defaults delete local.whisper.transcribe 2>/dev/null  # settings from versions before the Earshot name
    ```
 
