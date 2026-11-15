@@ -318,6 +318,22 @@ func setUpDictationOn() {
                                     level: { -20 }, endingIn: 24, onKeepRecording: {}, onStop: {}, notes: .constant(""))
                 .frame(width: 380, height: 1100).background(Color(nsColor: .windowBackgroundColor)))
         }),
+        ("setup-card", {
+            AnyView(VStack(spacing: 16) {
+                SetupCard(checklist: .init(microphone: .notAsked, dictationEnabled: false, accessibilityTrusted: false, dictationSkipped: false),
+                          onAllowMicrophone: {}, onOpenMicrophoneSettings: {}, onTurnOnDictation: {}, onOpenAccessibilitySettings: {}, onSkipDictation: {})
+                SetupCard(checklist: .init(microphone: .allowed, dictationEnabled: true, accessibilityTrusted: false, dictationSkipped: false),
+                          onAllowMicrophone: {}, onOpenMicrophoneSettings: {}, onTurnOnDictation: {}, onOpenAccessibilitySettings: {}, onSkipDictation: {})
+            }.padding(28).frame(width: 760).background(Color(nsColor: .windowBackgroundColor)))
+        }),
+        ("setup-card-narrow", {
+            AnyView(VStack(spacing: 16) {
+                SetupCard(checklist: .init(microphone: .refused, dictationEnabled: false, accessibilityTrusted: false, dictationSkipped: false),
+                          onAllowMicrophone: {}, onOpenMicrophoneSettings: {}, onTurnOnDictation: {}, onOpenAccessibilitySettings: {}, onSkipDictation: {})
+                SetupCard(checklist: .init(microphone: .allowed, dictationEnabled: true, accessibilityTrusted: false, dictationSkipped: false),
+                          onAllowMicrophone: {}, onOpenMicrophoneSettings: {}, onTurnOnDictation: {}, onOpenAccessibilitySettings: {}, onSkipDictation: {})
+            }.padding(20).frame(width: 380).background(Color(nsColor: .windowBackgroundColor)))
+        }),
         ("notes", {
             let items = sampleNoteItems()
             return AnyView(NotesView(items: items, recordingSince: nil, transcribing: false, level: { -30 },

@@ -63,8 +63,10 @@ afterwards, run `bash EarshotApp/make-dmg.sh` (→ `Earshot-<version>.dmg`).
    silence detector and the two speaker models (1.7 GB together). Each file is checked against a
    fixed SHA-256 fingerprint before it is installed in `~/Models/whisper` and `~/Models/speakers`.
    After this, nothing needs the internet.
-3. **Allow the microphone.** The first time you click **Record**, macOS asks. Click **Allow**.
-   To change it later: System Settings → Privacy & Security → Microphone.
+3. **Finish the Set up Earshot card** under it. **Allow** gives Earshot the microphone. For Dictation,
+   **Turn On** makes macOS ask for Accessibility and puts Earshot in its list: switch Earshot on there,
+   and the card ticks itself. **Not Now** leaves Dictation for later (Settings → Dictation). To change
+   either later: System Settings → Privacy & Security → Microphone, or Accessibility.
 4. **Pick your microphone** in **Settings** (<kbd>⌘</kbd> <kbd>,</kbd>) if you don't want the
    system default.
 

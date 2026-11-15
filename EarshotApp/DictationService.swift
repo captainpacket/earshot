@@ -58,14 +58,22 @@ final class DictationService: ObservableObject {
     /// True while a deliberate quiet `.failed` is sent, so its "Dictation failed." notice is dropped.
     private var quietFailure = false
 
-    /// Asks for the two permissions dictation needs: the microphone, and Accessibility (to type).
+    /// Whether this process has shown the Accessibility prompt. macOS shows it once per process anyway, and
+    /// asking again on every dictation only kept opening the dialog (ADR-2611142200).
+    private static var promptedThisLaunch = false
+
+    /// Asks for the two permissions dictation needs: the microphone, and Accessibility (to type). The
+    /// Accessibility prompt also puts Earshot in the list in System Settings.
     static func requestPermissions() {
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
+        guard !AXIsProcessTrusted(), !promptedThisLaunch else { return }
+        promptedThisLaunch = true
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
     }
 
-    /// Removes a stale Accessibility entry (left by an old build) and asks macOS again.
+    /// Removes a stale Accessibility entry (left by an old build), then relaunches Earshot: macOS shows the
+    /// prompt only once per process, so the fresh process asks and Earshot appears in the list again.
     static func resetAccessibilityPermission() {
         let bundleID = Bundle.main.bundleIdentifier ?? "org.sticksandstrings.earshot"
         DispatchQueue.global(qos: .userInitiated).async {
@@ -76,8 +84,18 @@ final class DictationService: ObservableObject {
             process.standardError = FileHandle.nullDevice
             try? process.run()
             process.waitUntilExit()
-            DispatchQueue.main.async { requestPermissions() }
+            DispatchQueue.main.async { relaunch() }
         }
+    }
+
+    /// Opens a new copy of Earshot a moment after this one quits.
+    static func relaunch() {
+        let path = Bundle.main.bundlePath
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", path]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 
     // MARK: Hotkey
@@ -523,7 +541,7 @@ final class DictationService: ObservableObject {
 
     private func paste(_ text: String) {
         guard AXIsProcessTrusted() else {
-            _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+            Self.requestPermissions()  // at most once per launch
             // The clipboard is the only copy of the text here, so no transient markers.
             let board = NSPasteboard.general
             board.clearContents()

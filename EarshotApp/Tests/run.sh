@@ -63,6 +63,9 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Bran
 # MeetingNotesTests (ADR-2611142100): notes typed during a meeting reach the summary. Fails itself if fewer than 7 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library MeetingNotes.swift Tests/MeetingNotesTests.swift -o "$out/meeting-notes-tests"
 "$out/meeting-notes-tests"
+# SetupChecklistTests (ADR-2611142200): the first-launch setup card. Fails itself if fewer than 15 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Brand.swift BrandColors.swift SetupCard.swift Tests/SetupChecklistTests.swift -o "$out/setup-checklist-tests"
+"$out/setup-checklist-tests"
 # SubmitTests also uses @main and fails itself if fewer than 15 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift Tests/SubmitTests.swift -o "$out/submit-tests"
 "$out/submit-tests"
