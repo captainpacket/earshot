@@ -15,9 +15,9 @@ enum PrivateFiles {
     }
 
     /// Replaces the file at `url` with `data` in one step. The file is 600 from the moment it exists, and its
-    /// folder is created, or tightened, to 700.
+    /// folder is created, or tightened, to 700 (unless `tightenFolder` is false: the recordings folder is the user's).
     @discardableResult
-    static func writeAtomically(_ data: Data, to url: URL) -> Bool {
+    static func writeAtomically(_ data: Data, to url: URL, tightenFolder: Bool = true) -> Bool {
         let dir = url.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
@@ -25,7 +25,7 @@ enum PrivateFiles {
         } catch {
             return false
         }
-        chmod(dir.path, 0o700)
+        if tightenFolder { chmod(dir.path, 0o700) }
         let temp = dir.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
         let fd = open(temp.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { return false }

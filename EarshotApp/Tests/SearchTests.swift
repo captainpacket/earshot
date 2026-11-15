@@ -83,8 +83,37 @@ func snippet(_ hit: SearchHit) -> String { if case .recording(_, _, let s) = hit
                   noteHit.count == 1 && { if case .note(_, _, let s) = noteHit[0] { return s.contains("launch") && s.hasPrefix("…") && s.count <= 100 } else { return false } }())
         checkTrue("an empty query finds no notes either", SearchIndex.search("", recordings: [], destinations: [], notes: [n1]).isEmpty)
 
+        // MARK: sections and highlights (ADR-2611072100 B7)
+        let mixed: [SearchHit] = [
+            .destination(id: "s", title: "Shortcut", detail: "Dictation"),
+            .note(id: "n", title: "Note", snippet: "roadmap idea"),
+            .recording(id: "r1", title: "Roadmap review", snippet: "x"),
+            .recording(id: "r2", title: "Weekly", snippet: "the roadmap"),
+        ]
+        let secs = SearchIndex.sections(mixed)
+        checkTrue("sections come in the order Recordings, Notes, Settings",
+                  secs.map(\.title) == ["Recordings", "Notes", "Settings"], "\(secs.map(\.title))")
+        checkTrue("each section keeps its hits in order",
+                  secs.first?.hits == [mixed[2], mixed[3]])
+        checkTrue("an empty kind has no section",
+                  SearchIndex.sections([mixed[2]]).map(\.title) == ["Recordings"])
+        checkTrue("the overall limit is kept across sections",
+                  SearchIndex.sections(mixed, limit: 3).flatMap(\.hits).count == 3)
+        checkTrue("the limit drops the last sections first",
+                  SearchIndex.sections(mixed, limit: 3).map(\.title) == ["Recordings", "Notes"])
+
+        func marked(_ q: String, _ t: String) -> [String] { SearchIndex.matchRanges(of: q, in: t).map { String(t[$0]) } }
+        checkTrue("a match is found ignoring case", marked("road", "Roadmap review") == ["Road"])
+        checkTrue("every occurrence is marked", marked("a", "a banana") == ["a", "a", "a", "a"], "\(marked("a", "a banana"))")
+        checkTrue("each word of the query is marked, in text order",
+                  marked("review road", "Roadmap review") == ["Road", "review"], "\(marked("review road", "Roadmap review"))")
+        checkTrue("accents are ignored", marked("cafe", "Le Café") == ["Café"], "\(marked("cafe", "Le Café"))")
+        checkTrue("overlapping words merge into one mark", marked("road roadmap", "Roadmap") == ["Roadmap"])
+        checkTrue("no match, no marks", marked("zebra", "Roadmap").isEmpty)
+        checkTrue("an empty query marks nothing", marked("   ", "Roadmap").isEmpty)
+
         print("\(checks) checks, \(failures) failed")
-        if checks < 24 { print("VACUOUS: only \(checks) checks ran, need 24"); exit(1) }
+        if checks < 36 { print("VACUOUS: only \(checks) checks ran, need 36"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }

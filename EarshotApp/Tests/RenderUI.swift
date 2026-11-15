@@ -21,6 +21,73 @@ func sampleHomeItems() -> [HomeItem] {
     ]
 }
 
+/// Home rows with buttons (ADR-2611072100 B1): long titles and long errors, so wrapping shows.
+@MainActor func homeActionsScene(width: CGFloat) -> some View {
+    let now = Date()
+    func row(_ id: String, _ hoursAgo: Double, _ title: String, _ detail: String, _ state: HomeItem.State,
+             transcript: Bool, step: HomeAction.Step? = nil) -> HomeItem {
+        HomeItem(id: id, date: now.addingTimeInterval(-hoursAgo * 3600), title: title, detail: detail, state: state,
+                 actions: HomeAction.choices(hasTranscript: transcript, state: state, failedStep: step, waitingForModels: false))
+    }
+    let items = [
+        row("a", 0, "Second quarter planning with the whole platform team and the design group", "42 min · transcribed · summarized", .done, transcript: true),
+        row("b", 1.5, "BOA call", "Not transcribed yet", .done, transcript: false),
+        row("c", 3, "Recording 2026-10-30 12:04", "6 min",
+            .failed("Transcription failed:\nwhisper_init_from_file_with_params_no_state: failed to open model file, it may be damaged or incomplete"),
+            transcript: false, step: .transcribe),
+        row("d", 5, "Customer interview with the procurement and legal teams about renewal terms", "51 min · transcribed",
+            .failed("Summary failed: FoundationModels.LanguageModelSession.GenerationError 2: the context window was exceeded"),
+            transcript: true, step: .summary),
+        row("e", 6, "product-meeting-0910.m4a", "Imported file · 1 h 04 min", .working, transcript: false),
+    ]
+    var home = HomeView(items: items, onOpen: { _ in })
+    home.onAction = { _, _ in }
+    return home
+        .overlay(alignment: .bottom) { RecordBar(recordingSince: nil, onRecord: {}, onImport: {}).padding(.bottom, 16) }
+        .frame(width: width, height: 760)
+        .background(Color(nsColor: .windowBackgroundColor))
+}
+
+/// The Settings cards (ADR-2611072100 B2, B3). `problems` adds a disconnected microphone and a login notice.
+@MainActor func settingsScene(width: CGFloat, problems: Bool) -> some View {
+    let mics = [SettingsChoice(id: "m1", name: "MacBook Pro Microphone"),
+                SettingsChoice(id: "m2", name: "Shure MV7+ Podcast Microphone (USB Audio Device)")]
+    let templates = [SettingsChoice(id: "minutes", name: "Meeting minutes", icon: "person.3"),
+                     SettingsChoice(id: "sales", name: "Sales call", icon: "briefcase")]
+    return ScrollView {
+        RecordingSettingsCards(
+            microphoneID: .constant(problems ? "gone" : "m2"), microphones: mics,
+            defaultMicrophoneName: "MacBook Pro Microphone",
+            autoStopMinutes: .constant(5), offerOnCall: .constant(true), openAtLogin: .constant(problems),
+            loginNotice: problems ? "macOS needs you to allow Earshot in System Settings → General → Login Items." : nil,
+            onOpenLoginItems: problems ? {} : nil,
+            translate: .constant(false), translateLocked: problems,
+            identifySpeakers: .constant(!problems), speakerCount: .constant(0),
+            summaryTemplate: .constant("minutes"), templates: templates)
+        .padding(20)
+    }
+    .frame(width: width, height: 1000)
+    .background(Color(nsColor: .windowBackgroundColor))
+}
+
+/// The menu bar panel (ADR-2611072100 B4), idle with long titles, or recording with the quiet warning.
+@MainActor func menuBarScene(recording: Bool) -> some View {
+    let now = Date()
+    let recent = [
+        MenuBarRecent(id: "a", title: "Second quarter planning with the whole platform team", date: now),
+        MenuBarRecent(id: "b", title: "BOA call", date: now.addingTimeInterval(-3 * 3600)),
+        MenuBarRecent(id: "c", title: "Recording 2026-10-30 12:04", date: now.addingTimeInterval(-9 * 3600)),
+    ]
+    return MenuBarPanelView(
+        icon: AnyView(Image(systemName: "ear").font(.title2).foregroundStyle(Color.brandAccent)),
+        recordingSince: recording ? now.addingTimeInterval(-754) : nil,
+        micName: "Shure MV7+ Podcast Microphone (USB Audio Device)", level: { -18 },
+        endingIn: recording ? 24 : nil, recent: recent, version: "1.3.1 (210, fd433e0)",
+        extra: recording ? nil : AnyView(Button {} label: { Label("Retry last dictation", systemImage: "arrow.counterclockwise") }),
+        onRecord: {}, onKeepRecording: {}, onOpen: { _ in }, onSettings: {}, onQuit: {})
+    .background(Color(nsColor: .windowBackgroundColor))
+}
+
 func sampleNoteItems() -> [NoteItem] {
     let now = Date()
     return [
@@ -190,6 +257,13 @@ func setUpDictationOn() {
             return AnyView(DictationPage(onEnable: {}, onResetPermission: {})
                 .frame(width: 760, height: 900).background(Color(nsColor: .windowBackgroundColor)))
         }),
+        ("dictation-page-narrow", {
+            UserDefaults.standard.set(true, forKey: DictationPrefs.enabled)
+            DictationDictionary(entries: [.init(heard: "ear shot", write: "Earshot"),
+                                          .init(heard: "sticks and strings", write: "Sticks and Strings LLC")]).save()
+            return AnyView(ScrollView { DictationPage(onEnable: {}, onResetPermission: {}) }
+                .frame(width: 380, height: 2200).background(Color(nsColor: .windowBackgroundColor)))
+        }),
         ("topbar", {
             AnyView(TopBar(title: "Recordings", query: .constant(""), hits: [], focusToken: 0, onPick: { _ in })
                 .frame(width: 760).background(Color(nsColor: .windowBackgroundColor)))
@@ -219,6 +293,30 @@ func setUpDictationOn() {
             return AnyView(HomeView(items: items, onOpen: { _ in })
                 .overlay(alignment: .bottom) { RecordBar(recordingSince: nil, onRecord: {}, onImport: {}).padding(.bottom, 16) }
                 .frame(width: 380, height: 640).background(Color(nsColor: .windowBackgroundColor)))
+        }),
+        ("home-actions", { AnyView(homeActionsScene(width: 760)) }),
+        ("home-actions-narrow", { AnyView(homeActionsScene(width: 380)) }),
+        ("settings-page", { AnyView(settingsScene(width: 560, problems: false)) }),
+        ("settings-page-narrow", { AnyView(settingsScene(width: 380, problems: true)) }),
+        ("menubar", { AnyView(menuBarScene(recording: false)) }),
+        ("menubar-recording", { AnyView(menuBarScene(recording: true)) }),
+        ("pill", {
+            AnyView(VStack(spacing: 16) {
+                HUDView(state: .listening, level: { -20 })
+                HUDView(state: .transcribing, level: { -60 })
+                HUDView(state: .transcribing, tidying: true, level: { -60 })
+            }.padding(24).frame(width: 300).background(Color(nsColor: .windowBackgroundColor)))
+        }),
+        ("recording-notes", {
+            AnyView(RecordingScreen(start: Date().addingTimeInterval(-754), micName: "MacBook Pro Microphone",
+                                    level: { -20 }, endingIn: nil, onKeepRecording: {}, onStop: {},
+                                    notes: .constant("Priya owns the launch date.\nAsk legal about the renewal terms before Friday."))
+                .frame(width: 760, height: 900).background(Color(nsColor: .windowBackgroundColor)))
+        }),
+        ("recording-notes-narrow", {
+            AnyView(RecordingScreen(start: Date().addingTimeInterval(-2210), micName: "Shure MV7+ Podcast Microphone (USB Audio Device)",
+                                    level: { -20 }, endingIn: 24, onKeepRecording: {}, onStop: {}, notes: .constant(""))
+                .frame(width: 380, height: 1100).background(Color(nsColor: .windowBackgroundColor)))
         }),
         ("notes", {
             let items = sampleNoteItems()

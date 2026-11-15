@@ -42,6 +42,18 @@ limit and cancels the model without awaiting it; a task group waited for the mod
    cancellation; verify with a test, and race with a continuation if it does not.
 
 ### B. Design (from the design review, worst first)
+
+*Done 2026-11-14:* B1 (Home rows show Transcribe, or Try Again and Move to Trash; Try Again retries the
+step that failed, tracked in `Library.failedStep`; `HomeActionTests`, scenes `home-actions` and
+`home-actions-narrow`) and the delete confirmation in B8 (Notes asks before deleting one note).
+
+*Done 2026-11-14, the rest of B:* B2 (Settings is cards, `SettingsPage.swift`), B3 (Translate is in Settings →
+Transcription and kept between launches; the toolbar is gone), B4 (menu bar panel `MenuBarPanelView.swift` and
+the Listening pill restyled; Tidying shows sparkles), B5 (Your notes while recording, ADR-2611142100), B6 (9-10 pt
+labels raised to 12 pt, the breadcrumb slash to secondary), B7 (search results grouped under Recordings, Notes,
+Settings, with the matched words highlighted) and B8 (Add Correction label, roomier correction rows). Each has a
+render scene at the real width and at 380 pt.
+
 1. Failed and untranscribed rows on Home need a visible action (Retry, Transcribe, Delete); today it is a
    context menu only.
 2. Settings is still the old grouped form; give it card pages like Dictation.

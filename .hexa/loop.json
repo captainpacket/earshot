@@ -1,6 +1,6 @@
 {
-  "adr": "ADR-2611072100",
-  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && test \"$(grep -c \"isMeetingRecording = .*meetingHoldsMicrophone\\|self.meetingHoldsMicrophone ||\" Earshot.swift)\" -ge 2 && grep -q \"var meetingHoldsMicrophone: Bool { recording || starting }\" Earshot.swift && ! grep -q \"systemUptime + 3600\" DictationService.swift && ! grep -q \"withTaskGroup\" DictationService.swift",
+  "adr": "ADR-2611142100",
+  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && bash Tests/render.sh >/dev/null && for s in home-actions home-actions-narrow settings-page settings-page-narrow menubar menubar-recording pill recording-notes recording-notes-narrow dictation-page-narrow; do test -s /tmp/earshot-ui/$s.png || exit 1; done && grep -q MeetingNotesTests Tests/run.sh && grep -q \"MeetingNotes.compose\" Earshot.swift && grep -q \"writeAtomically(Data(notes.utf8)\" Earshot.swift && ! grep -q \"HeaderControls\\|formStyle(.grouped)\" Earshot.swift",
   "sessions": {
     "10bfdb96-8c1b-46ac-ad63-2e3bcba7d177": {
       "adr": "ADR-2611101015",
@@ -406,7 +406,12 @@
       "done_at": "2026-11-15T00:03:37.748963+00:00",
       "status": "done",
       "title": "A7: the Tidy-up timeout fires even if the model ignores cancellation"
+    },
+    {
+      "done_at": "2026-11-15T00:25:00.402082+00:00",
+      "status": "done",
+      "title": "B1: failed and untranscribed rows on Home show Try Again / Transcribe / Move to Trash buttons"
     }
   ],
-  "updated": "2026-11-15T00:03:37.749051+00:00"
+  "updated": "2026-11-15T00:37:20.578270+00:00"
 }
