@@ -24,7 +24,7 @@ final class DictationService: ObservableObject {
     var runHelper: ([String]) async -> String? = { _ in "No transcriber is set up." }
     var log: (String) -> Void = { _ in }
     /// Tidies a transcript with a language model; nil means "no answer", and the original is typed.
-    var tidy: (String) async -> String? = { _ in nil }
+    var tidy: @Sendable (String) async -> String? = { _ in nil }
     var microphoneID: () -> String = { "" }
     /// True while a dictation is listening, transcribing or typing.
     var isBusy: Bool { session.state != .idle }
@@ -35,6 +35,8 @@ final class DictationService: ObservableObject {
     private var keptClip: URL?
 
     private var session = DictationSession()
+    /// Bumped when Dictation is turned off, so a transcription still running for the old session is dropped.
+    private var generation = 0
     private var recorder: MicRecorder?
     private var ticker: Timer?
     private var hotKey: EventHotKeyRef?
@@ -144,9 +146,11 @@ final class DictationService: ObservableObject {
         hud.hide()
         highlighter.hide()
         highlightFrame = nil
-        // Turning it off mid-capture must not leave the microphone open. A tick far in the future
-        // stops a capture in either mode; key up is ignored in tap-to-toggle mode.
-        send(.tick(at: ProcessInfo.processInfo.systemUptime + 3600))
+        // Turning it off mid-capture closes the microphone and throws the audio away; a transcription
+        // already running is dropped when it returns, so nothing is typed after Dictation is off (A4).
+        generation += 1
+        send(.disable)
+        discardCapture()
     }
 
     private func hotKeyChanged(pressed: Bool) {
@@ -386,6 +390,7 @@ final class DictationService: ObservableObject {
     private func transcribe(_ url: URL) {
         let script = scriptPath()
         let helper = runHelper
+        let started = generation
         Task { @MainActor in
             let text = await Task.detached { () -> String? in
                 let failure = await helper([script, url.path])
@@ -398,6 +403,11 @@ final class DictationService: ObservableObject {
                 }
                 return text
             }.value
+            guard started == generation else {
+                // Dictation was turned off while this ran: type nothing, keep nothing.
+                Self.deleteFiles(for: url)
+                return
+            }
             if text == nil {
                 log("Dictation: transcription failed.")
                 keptClip = url
@@ -422,18 +432,14 @@ final class DictationService: ObservableObject {
                 let tidy = self.tidy
                 tidying = true
                 refreshHUD()
-                let answer = await withTaskGroup(of: String?.self) { group in
-                    group.addTask { await tidy(original) }
-                    group.addTask { try? await Task.sleep(for: .seconds(5)); return nil }
-                    let first = await group.next() ?? nil
-                    group.cancelAll()
-                    return first
-                }
+                // Returns at five seconds even if the model ignores cancellation (A7).
+                let answer = await DictationCleanup.firstResult(within: 5) { await tidy(original) }
                 tidying = false
                 refreshHUD()
                 cleaned = DictationCleanup.choose(original: original, cleaned: answer)
                 if answer == nil { log("Dictation: cleanup skipped.") }
             }
+            guard started == generation else { return }  // turned off while tidying
             let corrected = cleaned.map { DictationDictionary.load().apply($0) }
             send(.transcript(corrected, secureInput: IsSecureEventInputEnabled()))
         }

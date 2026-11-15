@@ -1,6 +1,6 @@
 {
   "adr": "ADR-2611072100",
-  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && grep -q HelperRunTests Tests/run.sh && grep -q PrivateFilesTests Tests/run.sh && ! grep -nE \"log\\(\\\"[a-z]+ (finished|failed): \\\\\\\\\\((failure|error)\" *.swift",
+  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && test \"$(grep -c \"isMeetingRecording = .*meetingHoldsMicrophone\\|self.meetingHoldsMicrophone ||\" Earshot.swift)\" -ge 2 && grep -q \"var meetingHoldsMicrophone: Bool { recording || starting }\" Earshot.swift && ! grep -q \"systemUptime + 3600\" DictationService.swift && ! grep -q \"withTaskGroup\" DictationService.swift",
   "sessions": {
     "10bfdb96-8c1b-46ac-ad63-2e3bcba7d177": {
       "adr": "ADR-2611101015",
@@ -386,7 +386,27 @@
       "done_at": "2026-11-14T23:46:08.825126+00:00",
       "status": "done",
       "title": "Wire into Library, summary log line, docs, ADR status"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.723337+00:00",
+      "status": "done",
+      "title": "A4: turning Dictation off discards the capture and any transcript still on its way"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.731967+00:00",
+      "status": "done",
+      "title": "A5: a note or dictation cannot start while a meeting waits for the microphone"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.740469+00:00",
+      "status": "done",
+      "title": "A6: notes keep 10,000 and say when the oldest is removed"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.748963+00:00",
+      "status": "done",
+      "title": "A7: the Tidy-up timeout fires even if the model ignores cancellation"
     }
   ],
-  "updated": "2026-11-14T23:46:08.825211+00:00"
+  "updated": "2026-11-15T00:03:37.749051+00:00"
 }
