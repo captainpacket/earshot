@@ -17,7 +17,7 @@ func suite() -> UserDefaults {
 }
 
 @main struct CleanupTests {
-    static func main() {
+    static func main() async {
         let raw = "um so i think we should uh meet at 3 30 on june 12 maybe"
 
         // MARK: a good cleanup is used
@@ -79,8 +79,27 @@ func suite() -> UserDefaults {
         checkTrue("idle stays hidden while the flag is set", S.idle.indicatorText(tidying: true) == nil)
         checkTrue("inserting stays hidden while the flag is set", S.inserting.indicatorText(tidying: true) == nil)
 
+        // MARK: the Tidy-up time limit holds even when the model ignores cancellation (ADR-2611072100 A7)
+        var t0 = Date()
+        let quick = await DictationCleanup.firstResult(within: 2) { "tidied" }
+        checkTrue("a fast answer is used", quick == "tidied", "\(String(describing: quick))")
+        checkTrue("a fast answer does not wait for the limit", Date().timeIntervalSince(t0) < 1)
+
+        t0 = Date()
+        let stuck = await DictationCleanup.firstResult(within: 0.3) {
+            usleep(3_000_000)  // blocks, ignoring cancellation entirely
+            return "too late"
+        }
+        let waited = Date().timeIntervalSince(t0)
+        checkTrue("a model that ignores cancellation gives no answer", stuck == nil, "\(String(describing: stuck))")
+        checkTrue("and the caller gets control back at the limit, not after the model", waited < 1.5, "waited \(waited) s")
+
+        t0 = Date()
+        let none = await DictationCleanup.firstResult(within: 2) { nil }
+        checkTrue("a model that answers nothing is nil at once", none == nil && Date().timeIntervalSince(t0) < 1)
+
         print("\(checks) checks, \(failures) failed")
-        if checks < 24 { print("VACUOUS: only \(checks) checks ran, need 24"); exit(1) }
+        if checks < 29 { print("VACUOUS: only \(checks) checks ran, need 29"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }

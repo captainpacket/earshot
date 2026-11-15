@@ -24,6 +24,12 @@ lines carry the helper's name and exit code, or an error's domain and code, neve
 (`PrivateFiles`: `Earshot.log` and `notes.json` are 600, the notes folder 700). Gated by `HelperRunTests`
 and `PrivateFilesTests`.
 
+*Done 2026-11-14:* A4 (turning Dictation off sends `.disable`: a capture is discarded, and a transcription
+still running is dropped by a generation check, so nothing is typed), A5 (`meetingHoldsMicrophone` is true from
+the click on Record, including the permission prompt, and gates notes and dictation), A6 (notes keep 10,000;
+when the limit removes old notes the app says how many) and A7 (`DictationCleanup.firstResult` resumes at the
+limit and cancels the model without awaiting it; a task group waited for the model, which a test now shows).
+
 1. `Library.run` has no timeout and blocks a thread on a stuck helper (`Earshot.swift`, the run function).
 2. Logs: `Earshot.swift` logs `\(error)` and the last stderr lines of the helpers at three places; log a
    fixed message and the exit code, keep the tail for the UI only.

@@ -130,6 +130,8 @@ struct DictationSession {
         /// Transcribe the kept clip again after a failure. Only acts from idle; the app then sends
         /// `.transcript` as usual.
         case retry(meetingRecording: Bool)
+        /// Dictation was turned off: drop the capture, and anything still being transcribed (ADR-2611072100 A4).
+        case disable
     }
 
     enum Action: Equatable {
@@ -191,6 +193,15 @@ struct DictationSession {
             heldSince = nil
             state = .transcribing
             return [.stopCapture]
+
+        case (.listening, .disable):
+            heldSince = nil
+            state = .idle
+            return [.discardCapture]
+
+        case (.transcribing, .disable):
+            state = .idle
+            return []
 
         case (.listening, .failed):
             heldSince = nil

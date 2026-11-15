@@ -168,8 +168,30 @@ func isNotice(_ a: [DictationSession.Action]) -> Bool {
         a = r.handle(.keyDown(at: 1, meetingRecording: false))
         checkTrue("a key press while a retry is transcribing is ignored", a.isEmpty && r.state == .transcribing, "\(a)")
 
+        // MARK: turning Dictation off (ADR-2611072100 A4)
+        var off = DictationSession()
+        _ = off.handle(.keyDown(at: 0, meetingRecording: false))
+        a = off.handle(.disable)
+        checkTrue("turning off while listening discards the capture", a == [.discardCapture], "\(a)")
+        checkTrue("and goes back to idle", off.state == .idle)
+        a = off.handle(.tick(at: 10_000))
+        checkTrue("a later tick does nothing", a.isEmpty && off.state == .idle, "\(a)")
+
+        off = DictationSession()
+        _ = off.handle(.keyDown(at: 0, meetingRecording: false))
+        _ = off.handle(.keyUp(at: 2))
+        checkTrue("(setup) released after 2 s, it is transcribing", off.state == .transcribing)
+        a = off.handle(.disable)
+        checkTrue("turning off while transcribing says nothing and goes idle", a.isEmpty && off.state == .idle, "\(a)")
+        a = off.handle(.transcript("too late", secureInput: false))
+        checkTrue("a transcript arriving after that is not typed", a.isEmpty && off.state == .idle, "\(a)")
+
+        off = DictationSession()
+        a = off.handle(.disable)
+        checkTrue("turning off when idle does nothing", a.isEmpty && off.state == .idle, "\(a)")
+
         print("\(checks) checks, \(failures) failed")
-        if checks < 54 { print("VACUOUS: only \(checks) checks ran, need 54"); exit(1) }
+        if checks < 61 { print("VACUOUS: only \(checks) checks ran, need 61"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }

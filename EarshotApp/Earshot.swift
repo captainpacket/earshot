@@ -239,6 +239,9 @@ final class Library: ObservableObject {
     private var recorder: MicRecorder?
     // True while waiting for the microphone permission answer, so a second click can't start a second recorder.
     private var starting = false
+    /// A meeting has the microphone from the click on Record, including while macOS asks for permission,
+    /// so a note or a dictation cannot start in that gap (ADR-2611072100 A5).
+    var meetingHoldsMicrophone: Bool { recording || starting }
     private var savedTranscript = ""
     let dictation = DictationService()
     let notes = NotesStore()
@@ -272,7 +275,7 @@ final class Library: ObservableObject {
         }
         dictation.isMeetingRecording = { [weak self] in
             guard let self else { return false }
-            return self.recording || self.noteRecorder.recordingSince != nil || self.noteRecorder.transcribing
+            return self.meetingHoldsMicrophone || self.noteRecorder.recordingSince != nil || self.noteRecorder.transcribing
         }
         dictation.scriptPath = { [weak self] in self?.bin("transcribe") ?? "" }
         dictation.speakScriptPath = { [weak self] in self?.bin("earshot-speak") ?? "" }
@@ -285,7 +288,7 @@ final class Library: ObservableObject {
             return try? await session.respond(to: text).content
         }
         dictation.microphoneID = { UserDefaults.standard.string(forKey: MicRecorder.settingKey) ?? "" }
-        noteRecorder.isMeetingRecording = { [weak self] in self?.recording ?? false }
+        noteRecorder.isMeetingRecording = { [weak self] in self?.meetingHoldsMicrophone ?? false }
         noteRecorder.isDictationBusy = { [weak self] in self?.dictation.isBusy ?? false }
         noteRecorder.scriptPath = { [weak self] in self?.bin("transcribe") ?? "" }
         noteRecorder.runHelper = { await Library.run($0, timeout: HelperRun.clipTimeout).userMessage }
@@ -294,9 +297,11 @@ final class Library: ObservableObject {
         noteRecorder.onNotice = { [weak self] in self?.notice = $0 }
         noteRecorder.onSaved = { [weak self] text, secs in
             guard let self else { return }
-            self.notes.add(text: text, seconds: secs)
+            let removed = self.notes.add(text: text, seconds: secs)
             if self.notes.saveFailed {
                 self.notice = "The note could not be saved to disk, so it will be gone after you quit."
+            } else if let trimmed = DictationLog.droppedNotice(count: removed, limit: self.notes.limit) {
+                self.notice = trimmed
             }
         }
         dictation.refresh()
