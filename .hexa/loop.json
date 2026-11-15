@@ -1,6 +1,6 @@
 {
-  "adr": "ADR-2611142100",
-  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && bash Tests/render.sh >/dev/null && for s in home-actions home-actions-narrow settings-page settings-page-narrow menubar menubar-recording pill recording-notes recording-notes-narrow dictation-page-narrow; do test -s /tmp/earshot-ui/$s.png || exit 1; done && grep -q MeetingNotesTests Tests/run.sh && grep -q \"MeetingNotes.compose\" Earshot.swift && grep -q \"writeAtomically(Data(notes.utf8)\" Earshot.swift && ! grep -q \"HeaderControls\\|formStyle(.grouped)\" Earshot.swift",
+  "adr": "ADR-2611142200",
+  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && bash Tests/render.sh >/dev/null && test -s /tmp/earshot-ui/setup-card.png && test -s /tmp/earshot-ui/setup-card-narrow.png && grep -q SetupChecklistTests Tests/run.sh && test \"$(grep -c \"AXIsProcessTrustedWithOptions\" DictationService.swift)\" -eq 1 && grep -q \"promptedThisLaunch\" DictationService.swift",
   "sessions": {
     "10bfdb96-8c1b-46ac-ad63-2e3bcba7d177": {
       "adr": "ADR-2611101015",
@@ -413,5 +413,5 @@
       "title": "B1: failed and untranscribed rows on Home show Try Again / Transcribe / Move to Trash buttons"
     }
   ],
-  "updated": "2026-11-15T00:37:20.578270+00:00"
+  "updated": "2026-11-15T01:08:24.542534+00:00"
 }

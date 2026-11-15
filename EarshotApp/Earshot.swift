@@ -1488,6 +1488,57 @@ struct RetryDictationRow: View {
     }
 }
 
+/// The first-launch "Set up Earshot" card with live permission state (ADR-2611142200). Accessibility is
+/// checked every second while the card shows, so its row ticks as soon as it is switched on.
+struct SetupCardHost: View {
+    @AppStorage(DictationPrefs.enabled) private var dictationEnabled = false
+    @AppStorage("setupDictationSkipped") private var dictationSkipped = false
+    @State private var microphone = SetupCardHost.micStatus()
+    @State private var trusted = AXIsProcessTrusted()
+
+    private var checklist: SetupChecklist {
+        SetupChecklist(microphone: microphone, dictationEnabled: dictationEnabled,
+                       accessibilityTrusted: trusted, dictationSkipped: dictationSkipped)
+    }
+
+    var body: some View {
+        SetupCard(
+            checklist: checklist,
+            onAllowMicrophone: {
+                AVCaptureDevice.requestAccess(for: .audio) { _ in
+                    DispatchQueue.main.async { microphone = Self.micStatus() }
+                }
+            },
+            onOpenMicrophoneSettings: { Self.openPrivacy("Privacy_Microphone") },
+            onTurnOnDictation: {
+                dictationEnabled = true
+                DictationService.requestPermissions()
+            },
+            onOpenAccessibilitySettings: { Self.openPrivacy("Privacy_Accessibility") },
+            onSkipDictation: { dictationSkipped = true })
+        .padding(.top, checklist.showsCard ? 20 : 0)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            guard checklist.showsCard else { return }
+            trusted = AXIsProcessTrusted()
+            microphone = Self.micStatus()
+        }
+    }
+
+    static func micStatus() -> SetupChecklist.Mic {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: return .allowed
+        case .notDetermined: return .notAsked
+        default: return .refused
+        }
+    }
+
+    static func openPrivacy(_ anchor: String) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
 /// The panel that opens from the menu bar.
 struct MenuBarPanel: View {
     @ObservedObject var lib: Library
@@ -2089,6 +2140,8 @@ struct ContentView: View {
             ModelSetupCard(models: models)
                 .padding(.horizontal, 28)  // lines up with HomeView's content
                 .padding(.top, models.needsRequired || models.state != .idle ? 20 : 0)
+            SetupCardHost()
+                .padding(.horizontal, 28)
             recordingsList
         }
     }
