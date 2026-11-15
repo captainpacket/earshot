@@ -22,6 +22,8 @@ struct NotesView: View {
     let onClear: () -> Void
 
     @State private var confirmClear = false
+    /// The note waiting for Delete to be confirmed: a note cannot be brought back (ADR-2611072100 B8).
+    @State private var pendingDelete: NoteItem?
     @State private var pulse = false
 
     init(items: [NoteItem], recordingSince: Date?, transcribing: Bool, level: @escaping () -> Float,
@@ -153,6 +155,14 @@ struct NotesView: View {
             Button("Delete all", role: .destructive) { onClear() }
             Button("Cancel", role: .cancel) {}
         }
+        .confirmationDialog("Delete this note?",
+                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            presenting: pendingDelete) { note in
+            Button("Delete", role: .destructive) { onDelete(note.id) }
+            Button("Cancel", role: .cancel) {}
+        } message: { note in
+            Text(Self.preview(note.text) + "\n\nA deleted note cannot be brought back.")
+        }
     }
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -264,7 +274,7 @@ struct NotesView: View {
             HStack(spacing: 10) {
                 Button { onCopy(item.text) } label: { Image(systemName: "doc.on.doc") }
                     .help("Copy")
-                Button { onDelete(item.id) } label: { Image(systemName: "trash") }
+                Button { pendingDelete = item } label: { Image(systemName: "trash") }
                     .help("Delete")
             }
             .buttonStyle(.plain)
@@ -272,6 +282,12 @@ struct NotesView: View {
         }
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The start of a note, for the delete question: one line, at most 80 characters.
+    static func preview(_ text: String) -> String {
+        let line = text.split(whereSeparator: \.isNewline).joined(separator: " ")
+        return line.count > 80 ? String(line.prefix(79)) + "…" : line
     }
 
     private func metaLine(_ item: NoteItem) -> String? {

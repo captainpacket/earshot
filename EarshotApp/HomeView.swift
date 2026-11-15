@@ -15,12 +15,62 @@ struct HomeItem: Identifiable, Equatable {
     var title: String
     var detail: String
     var state: State
+    /// Buttons shown under the row, so a failed or untranscribed recording has a visible next step.
+    var actions: [HomeAction] = []
+}
+
+/// A button on a Home row (ADR-2611072100 B1).
+struct HomeAction: Identifiable, Equatable {
+    enum Step: Equatable { case transcribe, speakers, summary }
+    enum Kind: Equatable {
+        case transcribe
+        case retry(Step)
+        case trash
+    }
+
+    let kind: Kind
+
+    var id: String {
+        switch kind {
+        case .transcribe: return "transcribe"
+        case .retry(let step): return "retry-\(step)"
+        case .trash: return "trash"
+        }
+    }
+
+    var title: String {
+        switch kind {
+        case .transcribe: return "Transcribe"
+        case .retry: return "Try Again"
+        case .trash: return "Move to Trash"
+        }
+    }
+
+    var destructive: Bool { kind == .trash }
+
+    /// The buttons for a row. A failure retries the step that failed (transcription when there is no
+    /// transcript to work from) and offers the Trash. A recording waiting for the models gets none: the
+    /// download card above is its action.
+    static func choices(hasTranscript: Bool, state: HomeItem.State, failedStep: Step?,
+                        waitingForModels: Bool) -> [HomeAction] {
+        if waitingForModels { return [] }
+        switch state {
+        case .working:
+            return []
+        case .failed:
+            let step = hasTranscript ? (failedStep ?? .transcribe) : .transcribe
+            return [HomeAction(kind: .retry(step)), HomeAction(kind: .trash)]
+        case .done:
+            return hasTranscript ? [] : [HomeAction(kind: .transcribe)]
+        }
+    }
 }
 
 struct HomeView: View {
     let items: [HomeItem]
     let onOpen: (String) -> Void
     var rowMenu: ((HomeItem) -> AnyView)? = nil
+    var onAction: ((String, HomeAction.Kind) -> Void)? = nil
 
     private enum Filter { case all, errors }
     @State private var filter: Filter = .all
@@ -129,6 +179,29 @@ struct HomeView: View {
     }
 
     private func row(_ item: HomeItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            rowMain(item)
+            if !item.actions.isEmpty, let onAction {
+                // Outside the row's own button, so each click goes to its button and not to Open.
+                HStack(spacing: 8) {
+                    ForEach(item.actions) { action in
+                        Button(role: action.destructive ? .destructive : nil) {
+                            onAction(item.id, action.kind)
+                        } label: {
+                            Text(action.title).lineLimit(1).fixedSize()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(action.destructive ? nil : Color.brandAccent)
+                    }
+                }
+                .padding(.leading, 96)  // under the title, past the time column
+                .padding(.bottom, 10)
+            }
+        }
+    }
+
+    private func rowMain(_ item: HomeItem) -> some View {
         let failed: String? = { if case .failed(let m) = item.state { return m } else { return nil } }()
         return Button { onOpen(item.id) } label: {
             HStack(alignment: .top, spacing: 12) {
@@ -146,12 +219,12 @@ struct HomeView: View {
                         .foregroundStyle(failed != nil ? Color.brandWarningText : Color.primary)
                         .lineLimit(2)
                         .truncationMode(.tail)
-                    Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                    Text(item.detail).font(.callout).foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if let failed {
                         Text(failed).font(.callout).foregroundStyle(Color.brandWarningText)
-                            .lineLimit(3)
+                            .lineLimit(nil)  // the whole reason: it is at most three lines of tool output
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -200,7 +273,7 @@ struct RecordBar: View {
             Button(action: onImport) {
                 VStack(spacing: 3) {
                     Image(systemName: "square.and.arrow.down").font(.title3)
-                    Text("Import").font(.caption)
+                    Text("Import").font(.callout)
                 }
                 .contentShape(Rectangle())
             }
@@ -223,14 +296,14 @@ struct RecordBar: View {
                 if let since = recordingSince {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         Text(Self.elapsed(from: since, to: context.date))
-                            .font(.caption.monospacedDigit())
+                            .font(.callout.monospacedDigit())
                     }
                 }
             }
 
             VStack(spacing: 3) {
-                Text("⌘R").font(.caption).foregroundStyle(.secondary)
-                Text(recordingSince != nil ? "Stop" : "Record").font(.caption)
+                Text("⌘R").font(.callout).foregroundStyle(.secondary)
+                Text(recordingSince != nil ? "Stop" : "Record").font(.callout)
             }
         }
         .padding(.horizontal, 28)
@@ -263,7 +336,7 @@ struct SidebarStatusCard: View {
                     .font(.callout.weight(.semibold))
             }
             Text(detail)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }

@@ -11,6 +11,8 @@ Earshot itself sends nothing about you or your recordings anywhere. The activity
 and results, never what was said: when a tool fails, the log gets its name and exit code, and the
 error text, which can quote the recording, is shown in the app only. The log and the notes file can
 be read only by your macOS user account.
+Notes you type while recording a meeting are saved beside that recording (`.notes.md`, readable only by
+you) and go to Apple's on-device model with the transcript when it is summarized.
 
 ## What can leave the Mac, or be seen
 

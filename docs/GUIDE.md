@@ -10,7 +10,8 @@ Back to the [README](../README.md). Setup is in the [install guide](INSTALL.md).
 - **Speakers.** Labels who spoke when. Click a speaker to rename them everywhere.
 - **Summarize.** Nine Plaud-style templates, from meeting minutes to sales calls, with action items.
 - **Edit.** Fix the summary in a rich-text editor: headings, bold, bullets, checkboxes. Edited summaries are never replaced without asking.
-- **Translate.** Turns speech in other languages into English text.
+- **Your notes.** While recording, type names, decisions and to-dos under the timer. They are kept beside the recording, and its summary uses them.
+- **Translate.** Turns speech in other languages into English text. Switch it on in **Settings → Transcription**.
 - **Dictate.** Hold a shortcut (<kbd>⌃</kbd> <kbd>⌥</kbd> <kbd>Space</kbd> unless you change it) in any app, speak, let go, and Earshot types what you said, into a form, an email, anywhere. A small **Listening…** indicator shows while it hears you. Off until you turn it on in Settings.
 - **Categories.** The sidebar has three: **Recordings** (meetings and calls), **Notes** (your own voice notes) and **Dictation** (typing into any app).
 - **Search.** Search across recordings, notes and settings from the search bar, or press <kbd>⌘</kbd> <kbd>K</kbd>.

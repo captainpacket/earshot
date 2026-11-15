@@ -8,8 +8,9 @@ private final class HUDPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-/// What the indicator shows. The level is polled, not pushed, so the view owns its own timer.
-private struct HUDView: View {
+/// What the indicator shows: the Listening pill. The level is polled, not pushed, so the view owns its own timer.
+/// Internal so the render harness can draw it (ADR-2611072100 B4).
+struct HUDView: View {
     let state: DictationSession.State
     var tidying = false
     let level: () -> Float
@@ -20,7 +21,9 @@ private struct HUDView: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
-                if state == .transcribing {
+                if state == .transcribing && tidying {
+                    Image(systemName: "sparkles").foregroundStyle(Color.brandAccent)
+                } else if state == .transcribing {
                     ProgressView().controlSize(.small)
                 } else {
                     Image(systemName: "mic.fill")
@@ -29,7 +32,8 @@ private struct HUDView: View {
                         .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
                 }
                 Text(state.indicatorText(tidying: tidying) ?? "")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
             }
             if state.showsLevel {
                 Capsule()
@@ -40,9 +44,10 @@ private struct HUDView: View {
                     }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 18)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
         .fixedSize()
         .onAppear { pulse = true }
         .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in

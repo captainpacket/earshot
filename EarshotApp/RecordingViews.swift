@@ -56,7 +56,7 @@ struct RecordingHeader: View {
                     .foregroundStyle(.secondary)
                 ForEach(Array(chips.enumerated()), id: \.offset) { _, chip in
                     Text(chip)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -92,11 +92,14 @@ struct RecordingScreen: View {
     let endingIn: Int?
     let onKeepRecording: () -> Void
     let onStop: () -> Void
+    /// Notes typed while recording, kept with the recording and read by its summary (ADR-2611142100).
+    let notes: Binding<String>?
 
     @State private var pulse = false
 
     init(start: Date, micName: String, level: @escaping () -> Float, endingIn: Int?,
-         onKeepRecording: @escaping () -> Void, onStop: @escaping () -> Void) {
+         onKeepRecording: @escaping () -> Void, onStop: @escaping () -> Void, notes: Binding<String>? = nil) {
+        self.notes = notes
         self.start = start
         self.micName = micName
         self.level = level
@@ -130,15 +133,21 @@ struct RecordingScreen: View {
                 Label(micName, systemImage: "mic.fill")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 if let n = endingIn {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.brandWarning)
-                        Text("No one has spoken for a while. Stopping in \(n) s")
-                            .font(.callout)
-                        Spacer(minLength: 8)
-                        Button("Keep recording", action: onKeepRecording)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                    // Side by side when there is room; the button drops below in a narrow window, so the
+                    // reason is never cut off.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            warningText(n)
+                            Spacer(minLength: 8)
+                            keepButton
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            warningText(n)
+                            keepButton
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -149,18 +158,58 @@ struct RecordingScreen: View {
             .background(RoundedRectangle(cornerRadius: 16).fill(Color(nsColor: .controlBackgroundColor)))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
 
+            if let notes {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Your notes").font(.headline)
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: notes)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 110, maxHeight: 220)
+                        if notes.wrappedValue.isEmpty {
+                            Text("Type names, decisions and to-dos as you go. They are kept with this recording, and its summary uses them.")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
+                }
+            }
+
             Button(action: onStop) { Label("Stop", systemImage: "stop.fill") }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .controlSize(.extraLarge)
             Text("Everything stays on this Mac. The text appears here when you stop.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: 520)
-        .padding(40)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { pulse = true }
+    }
+
+    private func warningText(_ seconds: Int) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.brandWarning)
+            Text("No one has spoken for a while. Stopping in \(seconds) s.")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var keepButton: some View {
+        Button("Keep Recording", action: onKeepRecording)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .fixedSize()
     }
 
     private var waveform: some View {
@@ -169,7 +218,7 @@ struct RecordingScreen: View {
             let norm = 0.08 + 0.92 * min(1, max(0, (db + 60) / 60))
             let t = ctx.date.timeIntervalSinceReferenceDate
             let loud = db > -50
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {  // bars shrink from 4 to 2 pt so the card fits a narrow window
                 ForEach(0..<48, id: \.self) { i in
                     let x = Double(i)
                     // Smooth shape in [0.35, 1]; multiplied by the level so it never exceeds it.
@@ -177,7 +226,8 @@ struct RecordingScreen: View {
                     let h = max(4, 56 * norm * shape)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(loud ? Color.red : Color.secondary)
-                        .frame(width: 4, height: h)
+                        .frame(minWidth: 2, maxWidth: 4)
+                        .frame(height: h)
                 }
             }
             .frame(maxWidth: .infinity)
