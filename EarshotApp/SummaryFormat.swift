@@ -17,7 +17,8 @@ struct SummaryTemplate: Identifiable, Hashable {
     static let all: [SummaryTemplate] = [
         .init(id: "minutes", name: "Meeting minutes", icon: "person.3",
               sections: "One section per main topic discussed, with the topic as its heading. "
-                + "Then a section named Decisions with what was agreed. Then Open questions, if any were raised.",
+                + "Then a section named Decisions, only for what the speakers explicitly agreed. "
+                + "Then Open questions, only for questions asked and not answered.",
               trailing: ["Decisions", "Open questions"]),
         .init(id: "quick", name: "Quick summary", icon: "text.alignleft",
               sections: "One section named Key points.",
@@ -86,6 +87,18 @@ enum SummaryFormat {
             out.append(ch.isLetter || ch.isNumber ? ch : " ")
         }
         return out.split(whereSeparator: { $0 == " " }).joined(separator: " ")
+    }
+
+    /// The due date as the model wrote it, only if it is a real date the source text says.
+    /// Placeholders such as "none" or "TBD", and dates the text never mentions, become "".
+    static func groundedDue(_ due: String, in source: String) -> String {
+        let trimmed = due.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "" }
+        let n = normalize(trimmed)
+        let placeholders: Set<String> = ["n a", "na", "none", "not specified", "unspecified", "tbd", "tba",
+                                         "unknown", "no date", "not stated", "not mentioned"]
+        if n.isEmpty || placeholders.contains(n) { return "" }
+        return (" " + normalize(source) + " ").contains(" " + n + " ") ? trimmed : ""
     }
 
     private static func dropPlural(_ s: String) -> String { s.hasSuffix("s") ? String(s.dropLast()) : s }

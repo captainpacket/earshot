@@ -57,6 +57,26 @@ The causes are in the code, not in the model alone:
    command-line check (`scripts/summarize-file`) can run the real on-device model on a real transcript.
    It stays on-device: `SystemLanguageModel`, never Private Cloud Compute.
 
+7. **Second round, from the first real run.** `scripts/summarize-file` on `2026-11-18_120610` gave 29
+   sections and 178 points, up from about 15, with the specifics the old summary dropped (Bank of
+   America's 15-node cluster, $50 against $600 a license, Sunil and the IBM co-sell, the ServiceNow
+   ticketing gap). It also showed four new faults, fixed as follows:
+   - **Due dates the speakers never said** ("Next quarter", "Immediately") and placeholders ("N/A",
+     "None", "Not specified"). `SummaryFormat.groundedDue(_:in:)` keeps a due date only if its words
+     appear, as whole words, in the part of the transcript the item came from. Placeholders are always
+     dropped.
+   - **Decisions and Open questions invented for every part**, because the template names them. The
+     part instructions say to write a section the template names only if this part has something for
+     it. Decisions are only what the speakers explicitly agreed. Open questions are only questions
+     asked and not answered. Action items are only tasks a speaker committed to or asked someone to do,
+     at most 4 per part.
+   - **A title and overview about the first two minutes** ("Evan's Work"). The header instructions say
+     that the sections cover the whole recording in order, and that the title and overview are about
+     all of it. The header gets 2, then 1, then 0 points per section.
+   - **An intermittent "Failed to deserialize a Generable type"** from one part, which failed the whole
+     summary. A part that fails to decode is tried once more, then as two halves. The header falls back
+     to a plain title rather than fail.
+
 ## Consequences
 
 - A 56-minute meeting gets about 6 parts, which means up to 30 sections of 240 points before merging. A

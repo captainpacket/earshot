@@ -17,8 +17,8 @@ struct GeneratedPart {
     @Guide(description: "The sections the instructions ask for that this part of the text covers, in that order. One section per topic this part spends real time on",
            .maximumCount(5))
     var sections: [GeneratedSection]
-    @Guide(description: "Tasks a speaker said they or someone else will do in this part. Empty if there are none",
-           .maximumCount(6))
+    @Guide(description: "Only tasks a speaker explicitly committed to or asked someone to do in this part, such as I will send or can you check. Not topics, opinions or work already happening. Empty if there are none",
+           .maximumCount(4))
     var actionItems: [GeneratedAction]
 }
 
@@ -37,7 +37,7 @@ struct GeneratedAction {
     var owner: String
     @Guide(description: "The task, starting with a verb, with the specifics said")
     var task: String
-    @Guide(description: "A day or date only if the text states one. Otherwise an empty string")
+    @Guide(description: "The day or date exactly as the speaker said it, only if one was said. Otherwise an empty string")
     var due: String
 }
 
@@ -68,13 +68,18 @@ enum Summarizer {
         not in the text. Keep every specific: names, companies, products, numbers, dates, prices, reasons \
         and disagreements. Say who said what with the speaker label.
         \(template.sections)
+        Write a section the instructions name only if this part of the text has something for it. \
+        Never invent a decision, question or task to fill a section.
         """
     }
 
     static func headerInstructions(_ template: SummaryTemplate) -> String {
         """
-        You write the title and overview of \(template.name.lowercased()) from its section headings and \
-        key points. Use only what the text says.
+        You write the title and overview of \(template.name.lowercased()). The text is the section \
+        headings and key points of the whole recording, in order from start to end. The title names the \
+        main subject of the whole recording, not of its first section. The overview covers the whole \
+        recording: who took part, using the speaker labels, the main topics and what was concluded. \
+        Use only what the text says.
         """
     }
 
@@ -116,7 +121,7 @@ enum Summarizer {
         // The header sees the merged sections, with fewer points each until it fits.
         var title = "Recording summary"
         var overview = ""
-        for n in [4, 3, 2, 1, 0] {
+        for n in [2, 1, 0] {
             let input = SummaryFormat.overviewInput(merged, pointsPerSection: n)
             if try await model.tokenCount(for: input) > headerBudget { continue }
             let session = LanguageModelSession(model: model, instructions: headerInstructions(template))
@@ -128,6 +133,11 @@ enum Summarizer {
                 break
             } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
                 continue
+            } catch LanguageModelSession.GenerationError.decodingFailure {
+                continue
+            } catch {
+                // A failed header must not lose the sections already written.
+                continue
             }
         }
         return SummaryFormat.render(title: title, overview: overview, merged: merged, template: template,
@@ -137,7 +147,7 @@ enum Summarizer {
     /// Sections and action items for one chunk. If the model still finds it too long,
     /// halves it and returns the halves' parts in order.
     private static func part(_ chunk: String, template: SummaryTemplate, index: Int, of count: Int,
-                             budget: Int, depth: Int = 0) async throws -> [SummaryPart] {
+                             budget: Int, depth: Int = 0, retried: Bool = false) async throws -> [SummaryPart] {
         let session = LanguageModelSession(model: model,
                                            instructions: partInstructions(for: template, part: index, of: count))
         do {
@@ -145,17 +155,28 @@ enum Summarizer {
                                               options: GenerationOptions(maximumResponseTokens: partReserve)).content
             return [SummaryPart(
                 sections: g.sections.map { SummarySection(heading: $0.heading, points: $0.points) },
-                actions: g.actionItems.map { SummaryAction(owner: $0.owner, task: $0.task, due: $0.due) })]
+                actions: g.actionItems.map { SummaryAction(owner: $0.owner, task: $0.task, due: SummaryFormat.groundedDue($0.due, in: chunk)) })]
         } catch LanguageModelSession.GenerationError.exceededContextWindowSize where depth < 3 {
-            let half = max(1, budget / 2)
-            let halves = try await TokenChunker.split(chunk, budget: half,
-                                                      count: { try await model.tokenCount(for: $0) })
-            var out: [SummaryPart] = []
-            for h in halves {
-                out += try await part(h, template: template, index: index, of: count, budget: half, depth: depth + 1)
-            }
-            return out
+            return try await halves(chunk, template: template, index: index, of: count, budget: budget, depth: depth)
+        } catch LanguageModelSession.GenerationError.decodingFailure where !retried {
+            return try await part(chunk, template: template, index: index, of: count, budget: budget,
+                                  depth: depth, retried: true)
+        } catch LanguageModelSession.GenerationError.decodingFailure where depth < 3 {
+            return try await halves(chunk, template: template, index: index, of: count, budget: budget, depth: depth)
         }
+    }
+
+    /// Splits a chunk in two by tokens and summarizes each half, one level deeper.
+    private static func halves(_ chunk: String, template: SummaryTemplate, index: Int, of count: Int,
+                               budget: Int, depth: Int) async throws -> [SummaryPart] {
+        let half = max(1, budget / 2)
+        let pieces = try await TokenChunker.split(chunk, budget: half,
+                                                  count: { try await model.tokenCount(for: $0) })
+        var out: [SummaryPart] = []
+        for h in pieces {
+            out += try await part(h, template: template, index: index, of: count, budget: half, depth: depth + 1)
+        }
+        return out
     }
 
     static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {

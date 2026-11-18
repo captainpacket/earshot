@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Summarizes one transcript with the app's own Summarizer and Apple's on-device model (ADR-2611181715),
+# so a change to summaries can be checked on a real recording without the app's UI.
+# Nothing leaves the Mac: it is the same SystemLanguageModel the app uses.
+#
+# Usage: scripts/summarize-file <transcript.txt> [template-id]   (default template: minutes)
+# Prints the Markdown to stdout and a line of stats to stderr. Needs Apple Intelligence.
+set -euo pipefail
+[ $# -ge 1 ] || { echo "usage: $0 <transcript.txt> [template-id]" >&2; exit 2; }
+txt=$1; template=${2:-minutes}
+[ -f "$txt" ] || { echo "no such file: $txt" >&2; exit 2; }
+app="$(cd "$(dirname "$0")/../EarshotApp" && pwd)"
+out=$(mktemp -d); trap 'rm -rf "$out"' EXIT
+cat > "$out/main.swift" <<'EOF'
+import Foundation
+@main struct SummarizeFile {
+    static func main() async {
+        let args = CommandLine.arguments
+        do {
+            let text = try String(contentsOfFile: args[1], encoding: .utf8)
+            let start = Date()
+            let md = try await Summarizer.summarize(text, template: SummaryTemplate.find(args[2]),
+                                                    date: Date(), seconds: nil)
+            print(md)
+            let bullets = md.split(separator: "\n").filter { $0.hasPrefix("- ") }.count
+            let sections = md.split(separator: "\n").filter { $0.hasPrefix("## ") }.count
+            FileHandle.standardError.write(Data(
+                "\(text.split(whereSeparator: \.isWhitespace).count) words in, \(sections) sections, \(bullets) bullets, \(Int(Date().timeIntervalSince(start))) s\n".utf8))
+        } catch {
+            FileHandle.standardError.write(Data("summary failed: \(Summarizer.describe(error))\n".utf8))
+            exit(1)
+        }
+    }
+}
+EOF
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library \
+    "$app/Summarizer.swift" "$app/SummaryFormat.swift" "$app/Chunking.swift" "$out/main.swift" -o "$out/summarize"
+"$out/summarize" "$txt" "$template"

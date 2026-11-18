@@ -202,8 +202,21 @@ func bullets(_ md: String) -> Int { md.split(separator: "\n").filter { $0.hasPre
         checkTrue("an unlabelled long line is cut without inventing a label",
                   plainPieces.count >= 3 && plainPieces.allSatisfy { $0.hasPrefix("No label") })
 
+        // groundedDue: a due date survives only if the part of the transcript says it
+        let said = "Speaker 1: I'll send the two-pager by Friday. Speaker 2: Let's meet next Tuesday, the 3rd."
+        checkTrue("a day said in the text is kept", SummaryFormat.groundedDue("Friday", in: said) == "Friday")
+        checkTrue("case and punctuation do not matter", SummaryFormat.groundedDue("next tuesday.", in: said) == "next tuesday.")
+        checkTrue("a date the text never says is dropped", SummaryFormat.groundedDue("Next quarter", in: said) == "")
+        checkTrue("Immediately, never said, is dropped", SummaryFormat.groundedDue("Immediately", in: said) == "")
+        for placeholder in ["N/A", "None", "Not specified", "unspecified", "TBD", "Unknown", "-", "No date", "  "] {
+            checkTrue("placeholder \"\(placeholder)\" is dropped even if the text has the word",
+                      SummaryFormat.groundedDue(placeholder, in: "none of this is tbd, unknown, no date, not specified") == "")
+        }
+        checkTrue("a word inside another word does not count", SummaryFormat.groundedDue("May", in: "we maybe ship") == "")
+        checkTrue("the 3rd, said, is kept", SummaryFormat.groundedDue("the 3rd", in: said) == "the 3rd")
+
         print("\(checks) checks, \(failures) failed")
-        if checks < 48 { print("VACUOUS: only \(checks) checks ran, need 48"); exit(1) }
+        if checks < 70 { print("VACUOUS: only \(checks) checks ran, need 70"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }
