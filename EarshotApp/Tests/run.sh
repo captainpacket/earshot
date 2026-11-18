@@ -77,6 +77,6 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Reco
 # CallOfferPanelTests (ADR-2611130933) also uses @main and fails itself if fewer than 10 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library CallStart.swift Tests/CallOfferPanelTests.swift -o "$out/call-offer-panel-tests"
 "$out/call-offer-panel-tests"
-# SummaryFormatTests (ADR-2611181715) also uses @main and fails itself if fewer than 85 checks ran.
+# SummaryFormatTests (ADR-2611181715) also uses @main and fails itself if fewer than 88 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library SummaryFormat.swift Tests/SummaryFormatTests.swift -o "$out/summary-format-tests"
 "$out/summary-format-tests"

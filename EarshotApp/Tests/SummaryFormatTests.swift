@@ -253,8 +253,19 @@ func bullets(_ md: String) -> Int { md.split(separator: "\n").filter { $0.hasPre
                   SummaryFormat.merge([part([sec("Speaker 2", ["Done: shipped the panel."])])],
                                       template: SummaryTemplate.find("standup")).sections.first?.heading == "Speaker 2")
 
+        // a point that repeats its own label: "Speaker 1: Speaker 1 will send…" reads "Speaker 1 will send…"
+        let m10 = SummaryFormat.merge([part([sec("IBM", [
+            "Speaker 1: Speaker 1 will send an email about the IBM co-sell.",
+            "Speaker 2: Axonius will build the glue.",
+            "Speaker 1: speaker 1 asked about Splunk.",
+        ])])], template: minutes)
+        checkTrue("a doubled label is said once",
+                  m10.sections.first?.points.first == "Speaker 1 will send an email about the IBM co-sell.", "\(m10.sections)")
+        checkTrue("a label before other words is kept", m10.sections.first?.points[1] == "Speaker 2: Axonius will build the glue.")
+        checkTrue("the doubled label is matched without case", m10.sections.first?.points[2] == "speaker 1 asked about Splunk.")
+
         print("\(checks) checks, \(failures) failed")
-        if checks < 85 { print("VACUOUS: only \(checks) checks ran, need 85"); exit(1) }
+        if checks < 88 { print("VACUOUS: only \(checks) checks ran, need 88"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }

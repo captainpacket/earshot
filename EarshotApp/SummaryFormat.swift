@@ -124,6 +124,17 @@ enum SummaryFormat {
         return rest.isEmpty ? heading : rest
     }
 
+    /// A point that repeats its own label is said once ("Speaker 1: Speaker 1 will send…" is
+    /// "Speaker 1 will send…"); a label before other words stays.
+    static func undoubled(_ point: String) -> String {
+        guard let m = point.wholeMatch(of: #/([^:]{1,40}):\s+(.+)/#) else { return point }
+        let label = String(m.1), rest = String(m.2)
+        guard rest.count >= label.count,
+              rest.prefix(label.count).lowercased() == label.lowercased() else { return point }
+        let after = rest.dropFirst(label.count)
+        return after.isEmpty || after.first == " " ? rest : point
+    }
+
     /// The heading fills the slot: the same heading, or it starts with the slot name, singular or
     /// plural, then a word boundary ("Decision Points" fills Decisions, "Open questions raised" Open questions).
     static func fills(_ heading: String, slot: String) -> Bool {
@@ -171,7 +182,7 @@ enum SummaryFormat {
         var groups: [SummarySection] = []
         for part in parts {
             for var s in part.sections where !s.heading.localizedCaseInsensitiveContains("action item") {
-                s.points = s.points.filter { !isAbsence($0) }
+                s.points = s.points.filter { !isAbsence($0) }.map(undoubled)
                 s.heading = unlabeled(s.heading)
                 if let slot = slots.first(where: { fills(s.heading, slot: $0) }) { s.heading = slot }
                 if let i = groups.firstIndex(where: { sameHeading($0.heading, s.heading) }) {
