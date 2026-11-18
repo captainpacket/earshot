@@ -26,6 +26,11 @@ The causes are in the code, not in the model alone:
    to the model with the template's instructions and returns a `GeneratedPart`: up to 5 sections of up
    to 8 points, plus its action items. These parts *are* the summary's body. They are merged, not
    summarized again, so a longer recording gets more points, not fewer.
+   **Long turns are cut first** (`SummaryFormat.splitTurns`). The diarized transcript of that meeting
+   has 13 lines, and one of them is a single 26,915-character turn. Splitting a turn that long happens
+   mid-sentence and drops the speaker label from every piece after the first. So before chunking, a turn
+   over 120 words is cut at sentence ends (or at word boundaries if it has none) into lines of at most
+   120 words, and each line keeps its `Speaker N:` label.
 2. **One last, small call writes only the title and overview**, from the merged headings and points.
    If those are too long for one call, it gets the first points of each section, as many as fit.
 3. **Merging is a pure function** (`SummaryFormat.swift`, Foundation only):

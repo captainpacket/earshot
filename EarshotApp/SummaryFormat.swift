@@ -222,6 +222,56 @@ enum SummaryFormat {
         return lines.joined(separator: "\n")
     }
 
+    /// Long turns are cut first: each line whose body is over `maxWords` words is split at sentence ends
+    /// into pieces of at most `maxWords` words, each keeping the line's speaker label. Every word is kept.
+    static func splitTurns(_ text: String, maxWords: Int) -> String {
+        let limit = max(1, maxWords)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        return lines.map { line -> String in
+            if line.isEmpty { return String(line) }
+            var label = ""
+            var body = Substring(line)
+            if let m = line.prefixMatch(of: #/([^:]{1,40}): /#) {
+                label = String(m.0)
+                body = line[m.range.upperBound...]
+            }
+            let words = body.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+            if words.count <= limit { return String(line) }
+
+            // Sentences: runs of words ending with a word that ends in . ! or ?
+            var sentences: [[String]] = []
+            var current: [String] = []
+            for w in words {
+                current.append(w)
+                if let last = w.last, last == "." || last == "!" || last == "?" {
+                    sentences.append(current)
+                    current = []
+                }
+            }
+            if !current.isEmpty { sentences.append(current) }
+
+            var pieces: [[String]] = []
+            var piece: [String] = []
+            for s in sentences {
+                if s.count > limit {
+                    if !piece.isEmpty { pieces.append(piece); piece = [] }
+                    var i = 0
+                    while i < s.count {
+                        pieces.append(Array(s[i..<min(i + limit, s.count)]))
+                        i += limit
+                    }
+                } else if piece.count + s.count > limit {
+                    pieces.append(piece)
+                    piece = s
+                } else {
+                    piece += s
+                }
+            }
+            if !piece.isEmpty { pieces.append(piece) }
+            return pieces.map { label + $0.joined(separator: " ") }.joined(separator: "\n")
+        }.joined(separator: "\n")
+    }
+
     /// The speaker names used in a transcript, in order of first appearance ("Speaker 1", or a renamed "Gary").
     static func speakerNames(in transcript: String) -> [String] {
         var names: [String] = []

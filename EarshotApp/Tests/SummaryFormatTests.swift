@@ -174,8 +174,36 @@ func bullets(_ md: String) -> Int { md.split(separator: "\n").filter { $0.hasPre
         checkTrue("minutes trails with Decisions and Open questions", minutes.trailing == ["Decisions", "Open questions"])
         checkTrue("an unknown id falls back to the first template", SummaryTemplate.find("nope").id == SummaryTemplate.all[0].id)
 
+        // splitTurns: a long turn is cut at sentence ends and every piece keeps the speaker label
+        let sentence = "We sized the bank cluster at fifteen nodes for the next year. "
+        let longTurn = "Speaker 1: " + String(repeating: sentence, count: 30)   // 12 words x 30 = 360 words
+        let split = SummaryFormat.splitTurns(longTurn + "\nSpeaker 2: Short reply.", maxWords: 80)
+        let pieces = split.split(separator: "\n").map(String.init)
+        checkTrue("a 360-word turn becomes several lines", pieces.count >= 5, "\(pieces.count) lines")
+        checkTrue("every piece of the long turn keeps its label",
+                  pieces.dropLast().allSatisfy { $0.hasPrefix("Speaker 1: ") }, pieces.first ?? "")
+        checkTrue("pieces end at sentence ends", pieces.dropLast().allSatisfy { $0.hasSuffix(".") })
+        checkTrue("no piece is over the limit",
+                  pieces.allSatisfy { $0.split(separator: " ").count <= 80 + 2 }, "\(pieces.map { $0.split(separator: " ").count })")
+        checkTrue("a short turn is left as it is", pieces.last == "Speaker 2: Short reply.")
+        func words(_ s: String) -> [Substring] {
+            s.split(separator: "\n").flatMap { line -> [Substring] in
+                var l = Substring(line); if l.hasPrefix("Speaker 1: ") { l = l.dropFirst(11) }
+                return l.split(separator: " ")
+            }
+        }
+        checkTrue("every word is kept, in order", words(split) == words(longTurn + "\nSpeaker 2: Short reply."))
+        let runOn = "Speaker 2: " + (1...200).map { "w\($0)" }.joined(separator: " ")
+        let runPieces = SummaryFormat.splitTurns(runOn, maxWords: 50).split(separator: "\n")
+        checkTrue("a turn with no sentence ends is still cut, by words",
+                  runPieces.count == 4 && runPieces.allSatisfy { $0.hasPrefix("Speaker 2: ") }, "\(runPieces.count)")
+        let plain = String(repeating: "No label here at all. ", count: 40)
+        let plainPieces = SummaryFormat.splitTurns(plain, maxWords: 50).split(separator: "\n")
+        checkTrue("an unlabelled long line is cut without inventing a label",
+                  plainPieces.count >= 3 && plainPieces.allSatisfy { $0.hasPrefix("No label") })
+
         print("\(checks) checks, \(failures) failed")
-        if checks < 40 { print("VACUOUS: only \(checks) checks ran, need 40"); exit(1) }
+        if checks < 48 { print("VACUOUS: only \(checks) checks ran, need 48"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }
