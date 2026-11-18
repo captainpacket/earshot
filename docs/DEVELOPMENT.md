@@ -59,6 +59,8 @@ Design decisions are recorded as ADRs in `docs/adrs`, and release notes live in 
 ├── EarshotApp/
 │   ├── Earshot.swift      the whole app: timeline, tabs, recording, speakers, summaries
 │   ├── RichText.swift     the rich summary editor, and Markdown ↔ formatted text
+│   ├── Summarizer.swift   summaries from Apple's on-device model, one part of the transcript at a time
+│   ├── SummaryFormat.swift templates, merging parts, removing repeats, the summary's Markdown (pure)
 │   ├── Tests/             editor tests in a real text view: bash EarshotApp/Tests/run.sh
 │   ├── Info.plist         name, icon, microphone permission text, file types it opens
 │   ├── build.sh           builds and installs the app and the scripts

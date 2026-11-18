@@ -277,6 +277,120 @@
       ],
       "updated": "2026-11-02T21:51:16.110456+00:00"
     },
+    "c7cd89ce-3c35-4cb1-ac67-ca6fa0f6c126": {
+      "adr": "ADR-2611181715",
+      "fast_gate": null,
+      "files": [
+        "scripts/summarize-file",
+        "docs/adrs/ADR-2611181715-detailed-summaries.md",
+        "docs/GUIDE.md",
+        "docs/DEVELOPMENT.md",
+        "EarshotApp/Tests/SummaryFormatTests.swift",
+        "EarshotApp/Tests/run.sh",
+        "docs/releases/1.3.0.md"
+      ],
+      "gate": "cd EarshotApp && bash Tests/run.sh",
+      "gate_at": "2026-11-18T23:20:30.819034+00:00",
+      "gate_uncounted": true,
+      "last_run": {
+        "at": "2026-11-18T23:12:02.090403+00:00",
+        "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift",
+        "stage": "build"
+      },
+      "pid": 93574,
+      "pid_start": 15501771191313795704,
+      "resumed_from": "163b83d0-986a-42b0-bbc9-ba83d037f753",
+      "stage": "build",
+      "tasks": [
+        {
+          "done_at": "2026-11-13T14:41:28.211887+00:00",
+          "status": "done",
+          "title": "CallOfferPanelRule: wording and dismissal rule in CallStart.swift"
+        },
+        {
+          "done_at": "2026-11-13T14:45:07.713898+00:00",
+          "status": "done",
+          "title": "Floating offer panel, wired into offerTick, errors logged"
+        },
+        {
+          "done_at": "2026-11-13T15:30:17.518049+00:00",
+          "status": "done",
+          "title": "Help, README, build and relaunch"
+        },
+        {
+          "done_at": "2026-11-18T22:32:28.133661+00:00",
+          "status": "done",
+          "title": "SummaryFormat.swift: templates with leading/trailing, merge, dedupe, render, speakerNames"
+        },
+        {
+          "done_at": "2026-11-18T22:53:40.406234+00:00",
+          "status": "done",
+          "title": "Summarizer.swift: per-part generation, title/overview call, prompts that name speakers"
+        },
+        {
+          "done_at": "2026-11-18T22:53:40.428964+00:00",
+          "status": "done",
+          "title": "Earshot.swift wired to the new pipeline; old Summarizer removed"
+        },
+        {
+          "done_at": "2026-11-18T23:00:41.462479+00:00",
+          "status": "done",
+          "title": "scripts/summarize-file: real on-device run on the 2026-11-18 meeting"
+        },
+        {
+          "status": "doing",
+          "title": "Help/README, build, relaunch, commit"
+        },
+        {
+          "status": "todo",
+          "title": "Second round: grounded due dates, explicit-only decisions/actions, whole-meeting title, retry on decoding failure"
+        },
+        {
+          "closeout": "land",
+          "status": "todo",
+          "title": "Land on main"
+        },
+        {
+          "adr": "ADR-2611181715",
+          "closeout": "close",
+          "status": "todo",
+          "title": "Close ADR-2611181715"
+        }
+      ],
+      "updated": "2026-11-18T23:20:30.849407+00:00"
+    },
+    "e4fbb8fc-19b2-42ec-8e6b-168b23caa280": {
+      "adr": "ADR-2611130933",
+      "fast_gate": null,
+      "files": [
+        "EarshotApp/SummaryFormat.swift"
+      ],
+      "gate": "cd EarshotApp && bash Tests/run.sh",
+      "gate_at": "2026-11-18T23:12:54.197120+00:00",
+      "gate_uncounted": false,
+      "pid": 61934,
+      "pid_start": 6518567295209733327,
+      "resumed_from": "163b83d0-986a-42b0-bbc9-ba83d037f753",
+      "stage": "gate",
+      "tasks": [
+        {
+          "done_at": "2026-11-13T14:41:28.211887+00:00",
+          "status": "done",
+          "title": "CallOfferPanelRule: wording and dismissal rule in CallStart.swift"
+        },
+        {
+          "done_at": "2026-11-13T14:45:07.713898+00:00",
+          "status": "done",
+          "title": "Floating offer panel, wired into offerTick, errors logged"
+        },
+        {
+          "done_at": "2026-11-13T15:30:17.518049+00:00",
+          "status": "done",
+          "title": "Help, README, build and relaunch"
+        }
+      ],
+      "updated": "2026-11-18T23:13:01.007045+00:00"
+    },
     "e8000968-e6c7-4c12-a152-9697b902d961": {
       "adr": "ADR-2611072000",
       "files": [

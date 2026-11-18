@@ -44,9 +44,15 @@ flowchart LR
     fm --> summary[Summary]
 ```
 
-Apple's model fills in typed fields (title, overview, sections, action items with owner and due
-date), and Earshot writes the Markdown. A small model stays far more accurate this way than when
-it writes free text.
+Apple's model fills in typed fields (sections, points, action items with owner and due date), and
+Earshot writes the Markdown. A small model stays far more accurate this way than when it writes
+free text.
+
+The model reads about ten minutes of speech at a time, so Earshot gives it the recording in parts.
+Each part writes its own detailed sections, and Earshot merges them: sections with the same heading
+are combined, repeats are removed, and the template's fixed sections (such as Decisions) go where the
+template puts them. A last pass writes the title and overview from the whole result. A longer
+recording gets a longer summary. A due date is kept only if someone actually said it.
 
 ## Summary templates
 
@@ -144,8 +150,10 @@ speakers meeting.m4a -n 3       # exactly 3 speakers
 - **Speaker detection** was tuned on a real 14-minute, 3-voice call: the library default found 9
   "speakers", and Earshot's setting (0.7) found the real ones. Two similar voices in a short clip
   can still merge, and fast back-and-forth inside one run-on sentence can land in the wrong turn.
-- **Summaries** come from a small on-device model. It reads about 12 minutes of speech at once, so
-  longer recordings are summarized in parts first. Check names and numbers before you share one.
+- **Summaries** come from a small on-device model. It reads about ten minutes of speech at once, so
+  a long recording is summarized part by part and the parts are merged. A topic that runs across two
+  parts can show as two sections next to each other. An hour takes a few minutes. Check names and
+  numbers before you share one.
 - **Transcripts** can mishear names and jargon. Correct the Transcript tab, then click
   **Summarize** to rewrite the summary.
 - **Summaries** can be corrected directly: click **Edit** above the summary. Earshot marks it
