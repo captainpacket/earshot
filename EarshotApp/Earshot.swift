@@ -675,14 +675,7 @@ final class Library: ObservableObject {
 
     /// The speaker names used in a transcript, in order of first appearance ("Speaker 1", or a renamed "Gary").
     nonisolated static func speakerNames(in transcript: String) -> [String] {
-        var names: [String] = []
-        for line in transcript.split(separator: "\n") {
-            if let m = line.firstMatch(of: #/^\[\d\d:\d\d:\d\d\] ([^:]{1,40}):/#) {
-                let name = String(m.1)
-                if !names.contains(name) { names.append(name) }
-            }
-        }
-        return names
+        SummaryFormat.speakerNames(in: transcript)
     }
 
     /// Renames a speaker throughout the transcript, then in the summary. The summary is changed in place,
@@ -1805,42 +1798,7 @@ enum Prefs {
     }
 }
 
-/// A Plaud-style summary format: which sections the model should write.
-struct SummaryTemplate: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let icon: String
-    let sections: String
-
-    static let all: [SummaryTemplate] = [
-        .init(id: "minutes", name: "Meeting minutes", icon: "person.3",
-              sections: "One section per main topic discussed, with the topic as its heading. "
-                + "Then a section named Decisions with what was agreed. Then Open questions, if any were raised."),
-        .init(id: "quick", name: "Quick summary", icon: "text.alignleft",
-              sections: "One section named Key points."),
-        .init(id: "sales", name: "Sales call", icon: "briefcase",
-              sections: "Use these sections, and leave out any the text says nothing about: "
-                + "Customer and attendees, Current situation, Pain points, Requirements, "
-                + "Objections and risks, Competitors mentioned, Budget timeline and buying process, Next steps."),
-        .init(id: "oneonone", name: "One-on-one", icon: "person.2",
-              sections: "Sections: Updates, Challenges, Feedback, Decisions. Leave out any with nothing in the text."),
-        .init(id: "standup", name: "Daily stand-up", icon: "checklist",
-              sections: "One section per person, with the name as heading. Points start with "
-                + "Done:, Next: or Blocked:."),
-        .init(id: "interview", name: "Interview", icon: "mic",
-              sections: "A section named Background. Then one section per main question or theme. "
-                + "Then Notable quotes, using the speaker's own words."),
-        .init(id: "lecture", name: "Lecture or class notes", icon: "graduationcap",
-              sections: "One section per concept taught, with the concept as heading and the explanation as points. "
-                + "Then Examples, then Questions to review."),
-        .init(id: "brainstorm", name: "Brainstorm", icon: "lightbulb",
-              sections: "One section per group of related ideas. Then Most promising ideas, then Next steps."),
-        .init(id: "memo", name: "Voice memo", icon: "waveform",
-              sections: "Sections: Main points, Ideas. Put to-dos in the action items."),
-    ]
-
-    static func find(_ id: String) -> SummaryTemplate { all.first { $0.id == id } ?? all[0] }
-}
+// SummaryTemplate lives in SummaryFormat.swift (ADR-2611181715).
 
 // The shape the model must fill in. Typed fields keep a small model on track far better
 // than asking it for free-form Markdown (it used to copy the instructions into the output).
