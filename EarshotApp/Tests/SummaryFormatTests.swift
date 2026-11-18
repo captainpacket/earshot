@@ -215,8 +215,46 @@ func bullets(_ md: String) -> Int { md.split(separator: "\n").filter { $0.hasPre
         checkTrue("a word inside another word does not count", SummaryFormat.groundedDue("May", in: "we maybe ship") == "")
         checkTrue("the 3rd, said, is kept", SummaryFormat.groundedDue("the 3rd", in: said) == "the 3rd")
 
+        // isAbsence: a point or task that only says nothing happened is not content
+        for empty in ["Speaker 1 does not explicitly make any decisions in this section.",
+                      "Speaker 1 does not explicitly agree or disagree on any decisions in this part of the transcript.",
+                      "Speaker 1 does not explicitly ask any open questions in this section.",
+                      "Not committed to any specific tasks",
+                      "No decisions were made.", "None mentioned", "There were no open questions."] {
+            checkTrue("absence is dropped: \(empty)", SummaryFormat.isAbsence(empty))
+        }
+        for real in ["Speaker 1 does not want to OEM into Axonius.",
+                     "The bank has no budget until March.",
+                     "Speaker 2 said the plug-in is not maintained.",
+                     "Speaker 1 decided to use one 15-node cluster.",
+                     "Speaker 2 asked a question the bank could not answer."] {
+            checkTrue("real content is kept: \(real)", !SummaryFormat.isAbsence(real))
+        }
+        let m8 = SummaryFormat.merge([
+            part([sec("Decisions", ["Speaker 1 does not explicitly make any decisions in this section."]),
+                  sec("Pricing", ["Morgan Stanley pays $50 a license."])],
+                 [act("Speaker 1", "Not committed to any specific tasks"), act("Speaker 1", "Contact Sunil", "tomorrow")]),
+        ], template: minutes)
+        checkTrue("a section of only absences is dropped", headings(m8) == ["Pricing"], "\(headings(m8))")
+        checkTrue("an absent task is dropped", m8.actions.map(\.task) == ["Contact Sunil"], "\(m8.actions)")
+
+        // headings: a speaker label is not part of a topic, and a slot heading may be extended
+        let m9 = SummaryFormat.merge([
+            part([sec("Speaker 1: Questions for Nick", ["Speaker 1 asked how the Fed year looks."]),
+                  sec("Decision Points", ["Use one 15-node cluster for the bank."]),
+                  sec("Open questions raised", ["Who owns the ServiceNow integration?"]),
+                  sec("Licensing", ["Licensing IP to third parties is part of the new model."])]),
+        ], template: minutes)
+        checkTrue("a speaker label is taken off a heading",
+                  headings(m9).first == "Questions for Nick", "\(headings(m9))")
+        checkTrue("Decision Points and Open questions raised fill the template's slots, in order",
+                  headings(m9) == ["Questions for Nick", "Licensing", "Decisions", "Open questions"], "\(headings(m9))")
+        checkTrue("a heading that is only a label is left alone",
+                  SummaryFormat.merge([part([sec("Speaker 2", ["Done: shipped the panel."])])],
+                                      template: SummaryTemplate.find("standup")).sections.first?.heading == "Speaker 2")
+
         print("\(checks) checks, \(failures) failed")
-        if checks < 70 { print("VACUOUS: only \(checks) checks ran, need 70"); exit(1) }
+        if checks < 85 { print("VACUOUS: only \(checks) checks ran, need 85"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }

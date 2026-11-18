@@ -108,6 +108,31 @@ enum SummaryFormat {
         dropPlural(normalize(a)) == dropPlural(normalize(b))
     }
 
+    /// A point or task that only says nothing happened ("No decisions were made", "None mentioned").
+    static func isAbsence(_ s: String) -> Bool {
+        let n = normalize(s)
+        let empties: Set<String> = ["none", "none mentioned", "nothing", "nothing mentioned", "not specified", "n a"]
+        if n.isEmpty || empties.contains(n) { return true }
+        let pattern = #"\b(no|not|never|none|without|doesnt|didnt|dont|wasnt|werent)\b( \w+){0,6} (decisions?|questions?|tasks?|action items?)\b"#
+        return n.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// A heading without a leading speaker label ("Speaker 1: Pricing" is "Pricing"); a bare label stays.
+    static func unlabeled(_ heading: String) -> String {
+        guard let m = heading.wholeMatch(of: #/[^:]{1,40}:\s+(.+)/#) else { return heading }
+        let rest = String(m.1).trimmingCharacters(in: .whitespacesAndNewlines)
+        return rest.isEmpty ? heading : rest
+    }
+
+    /// The heading fills the slot: the same heading, or it starts with the slot name, singular or
+    /// plural, then a word boundary ("Decision Points" fills Decisions, "Open questions raised" Open questions).
+    static func fills(_ heading: String, slot: String) -> Bool {
+        if sameHeading(heading, slot) { return true }
+        let base = dropPlural(normalize(slot))
+        let n = normalize(heading)
+        return !base.isEmpty && (n.hasPrefix(base + " ") || n.hasPrefix(base + "s "))
+    }
+
     /// Two points say the same thing: equal once normalized, or the shorter (at least five words, the
     /// same numbers) has at least 85% of its distinct words in the longer one.
     static func samePoint(_ a: String, _ b: String) -> Bool {
@@ -140,10 +165,15 @@ enum SummaryFormat {
 
     /// Merges every part's sections and action items into one summary.
     static func merge(_ parts: [SummaryPart], template: SummaryTemplate) -> MergedSummary {
-        // Group by heading, first wording wins, points in part order.
+        // Group by heading, first wording wins, points in part order. Absences are dropped, speaker
+        // labels taken off headings, and a heading that fills a template slot takes the slot's wording.
+        let slots = template.leading + template.trailing
         var groups: [SummarySection] = []
         for part in parts {
-            for s in part.sections where !s.heading.localizedCaseInsensitiveContains("action item") {
+            for var s in part.sections where !s.heading.localizedCaseInsensitiveContains("action item") {
+                s.points = s.points.filter { !isAbsence($0) }
+                s.heading = unlabeled(s.heading)
+                if let slot = slots.first(where: { fills(s.heading, slot: $0) }) { s.heading = slot }
                 if let i = groups.firstIndex(where: { sameHeading($0.heading, s.heading) }) {
                     groups[i].points += s.points
                 } else {
@@ -182,7 +212,7 @@ enum SummaryFormat {
 
         // Action items: same owner and same task are one; the longer task and the first due date win.
         var actions: [SummaryAction] = []
-        for a in parts.flatMap(\.actions) {
+        for a in parts.flatMap(\.actions) where !isAbsence(a.task) {
             if let i = actions.firstIndex(where: { sameHeading($0.owner, a.owner) && samePoint($0.task, a.task) }) {
                 if a.task.count > actions[i].task.count { actions[i].task = a.task }
                 if actions[i].due.trimmingCharacters(in: .whitespaces).isEmpty { actions[i].due = a.due }

@@ -76,6 +76,7 @@ The causes are in the code, not in the model alone:
    - **An intermittent "Failed to deserialize a Generable type"** from one part, which failed the whole
      summary. A part that fails to decode is tried once more, then as two halves. The header falls back
      to a plain title rather than fail.
+   - **Points that only say nothing happened** ("Speaker 1 does not explicitly make any decisions"), speaker labels in headings, and "Decision Points" beside Decisions. merge drops absences (SummaryFormat.isAbsence), takes labels off headings, and lets a heading that starts with a slot name fill that slot.
 
 ## Consequences
 
