@@ -47,6 +47,35 @@ The tag makes CI build the disk image and publish it as a
 [GitHub release](https://github.com/gaberger/earshot/releases) with the notes file.
 CI stops if the tag and `VERSION` don't match.
 
+### Signing and notarization
+
+Tag builds are signed with Developer ID and notarized, so the DMG opens with a double-click
+(ADR-2611141600). CI stops a tag build that is missing any of these repository secrets
+(Settings → Secrets and variables → Actions):
+
+| Secret | What it is |
+|---|---|
+| `DEVELOPER_ID_P12` | The **Developer ID Application** certificate and its private key, exported from Keychain Access as .p12, then `base64 -i cert.p12 \| pbcopy` |
+| `DEVELOPER_ID_P12_PASSWORD` | The password you gave that .p12 when exporting it |
+| `NOTARY_KEY_P8` | An App Store Connect API key (Users and Access → Integrations → Team Keys, role Developer), `base64 -i AuthKey_XXXX.p8 \| pbcopy` |
+| `NOTARY_KEY_ID` | That key's Key ID |
+| `NOTARY_ISSUER_ID` | The Issuer ID shown above the keys list |
+
+| `HOMEBREW_TAP_TOKEN` | A fine-grained GitHub token with **Contents: read and write** on `gaberger/homebrew-earshot` only. CI uses it to update the cask after each release |
+
+To sign and notarize on your own Mac instead:
+
+```bash
+xcrun notarytool store-credentials earshot-notary --apple-id <you@example.com> --team-id <TEAMID>  # once
+export EARSHOT_SIGN_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"
+bash EarshotApp/build.sh && bash EarshotApp/make-dmg.sh
+EARSHOT_NOTARY_PROFILE=earshot-notary bash EarshotApp/notarize.sh Earshot-<version>.dmg
+```
+
+Without `EARSHOT_SIGN_IDENTITY`, `build.sh` signs ad hoc, as it always has. Every build uses the
+hardened runtime and `EarshotApp/Earshot.entitlements`. Set `EARSHOT_APP=<path>` to build somewhere
+other than `~/Applications`, without touching `~/.local/bin`.
+
 Design decisions are recorded as ADRs in `docs/adrs`, and release notes live in `docs/releases`.
 `scripts/readme-check` guards this README (structure, links, images and wording).
 
@@ -63,11 +92,13 @@ Design decisions are recorded as ADRs in `docs/adrs`, and release notes live in 
 │   ├── SummaryFormat.swift templates, merging parts, removing repeats, the summary's Markdown (pure)
 │   ├── Tests/             editor tests in a real text view: bash EarshotApp/Tests/run.sh
 │   ├── Info.plist         name, icon, microphone permission text, file types it opens
-│   ├── build.sh           builds and installs the app and the scripts
-│   └── make-dmg.sh        packs the built app into Earshot-<version>.dmg (drag to Applications)
+│   ├── Tools/             the bundled helpers: earshot-convert (audio decoding) and speakers (native sherpa-onnx)
+│   ├── vendor.sh          fetches and builds what the app bundles: whisper-cli, sherpa-onnx (→ .vendor/)
+│   ├── build.sh           builds and installs the app and the helpers
+│   ├── make-dmg.sh        packs the built app into Earshot-<version>.dmg (drag to Applications)
+│   └── notarize.sh        notarizes and staples a Developer ID-signed DMG
 ├── scripts/
 │   ├── transcribe         whisper.cpp wrapper
-│   ├── speakers           speaker detection (Python, run by uv)
 │   ├── earshot-mcp        read-only MCP server
 │   ├── earshot-speak      spoken replies hook for Claude Code
 │   ├── release            version bump, tag and release

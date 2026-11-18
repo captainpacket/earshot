@@ -148,9 +148,9 @@ for d in DOCS:
         check("every local link and image in docs/%s.md resolves" % d, not bad, bad)
 
 I, G, P, A, D = (docs[k] for k in DOCS)
-for cmd in ["brew install whisper-cpp ffmpeg uv", "ggml-large-v3-turbo.bin", "ggml-silero-v5.1.2.bin", "ggml-large-v3-q5_0.bin",
+for cmd in ["brew tap gaberger/earshot", "Click Download", "ggml-large-v3-turbo.bin", "ggml-silero-v5.1.2.bin", "ggml-large-v3-q5_0.bin",
             "sherpa-onnx-pyannote-segmentation-3-0.tar.bz2", "wespeaker_en_voxceleb_resnet34_LM.onnx", "speaker-recongition-models",
-            "bash EarshotApp/build.sh", "Open Anyway", "not notarized", "Apple silicon", "macOS 26.4", "Apple Intelligence", "Uninstall",
+            "bash EarshotApp/build.sh", "Open Anyway", "not notarized", "notarized, so Earshot opens", "Apple silicon", "macOS 26.4", "Apple Intelligence", "Uninstall",
             "Check that it works", "~/Models/whisper"]:
     check("INSTALL keeps: %s" % cmd, cmd in I)
 for phrase in ["Tap to start, tap to stop", "Fix words it mishears", "Tidy up what I say", "Highlight the window", "Press Return after typing",
@@ -207,6 +207,7 @@ for comp in ["whisper.cpp", "Silero", "sherpa-onnx", "pyannote", "WeSpeaker", "u
 check("it states MIT and Apache 2.0 licenses", "mit" in kl and "apache" in kl)
 check("it is honest that the WeSpeaker model's own terms are not checked", "wespeaker" in kl and ("not checked" in kl or "unchecked" in kl))
 check("it says ffmpeg is installed separately and not bundled", "ffmpeg" in kl and "not bundled" in kl)
+check("it credits ONNX Runtime, which the app bundles", "onnx runtime" in kl)
 check("README links to docs/ACKNOWLEDGEMENTS.md", "docs/ACKNOWLEDGEMENTS.md" in readme)
 check("every local link in ACKNOWLEDGEMENTS resolves", all(os.path.exists(os.path.normpath(os.path.join(ROOT, "docs", x.split("#")[0]))) for x in local_targets(K)))
 

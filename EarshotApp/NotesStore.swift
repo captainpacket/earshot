@@ -18,9 +18,15 @@ final class NotesStore: ObservableObject {
         refresh()
     }
 
-    func add(text: String, seconds: Double?) {
-        log.add(DictationLog.Entry(id: UUID().uuidString, date: Date(), text: text, app: nil, seconds: seconds))
+    /// How many notes the log keeps; past it, the oldest are removed.
+    var limit: Int { log.limit }
+
+    /// Adds a note and returns how many old notes the limit removed (ADR-2611072100 A6).
+    @discardableResult
+    func add(text: String, seconds: Double?) -> Int {
+        let removed = log.add(DictationLog.Entry(id: UUID().uuidString, date: Date(), text: text, app: nil, seconds: seconds))
         commit()
+        return removed.count
     }
 
     func remove(id: String) {

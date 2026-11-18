@@ -8,7 +8,7 @@ private struct KeyHint: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2)
+            .font(.callout)  // was caption2 (9 pt): too small to read (ADR-2611072100 B6)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
             .padding(.vertical, 2)
@@ -91,7 +91,7 @@ struct TopBar: View {
             .keyboardShortcut("[", modifiers: .command)
             .help(DetailNav.help)
             .accessibilityLabel(DetailNav.accessibilityLabel)
-            Text("/").font(.callout).foregroundStyle(.tertiary)
+            Text("/").font(.callout).foregroundStyle(.secondary)
             Text(back.trail)
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -123,9 +123,9 @@ struct TopBar: View {
     }
 
     private var results: some View {
-        let shown = Array(hits.prefix(8))
+        let sections = SearchIndex.sections(hits)
         return VStack(spacing: 0) {
-            if shown.isEmpty {
+            if sections.isEmpty {
                 Text("No matches for “\(query)”")
                     .font(.body)
                     .foregroundStyle(.secondary)
@@ -133,9 +133,19 @@ struct TopBar: View {
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                ForEach(Array(shown.enumerated()), id: \.offset) { index, hit in
-                    if index > 0 { Divider() }
-                    row(hit)
+                ForEach(Array(sections.enumerated()), id: \.element.title) { sectionIndex, section in
+                    if sectionIndex > 0 { Divider() }
+                    Text(section.title.uppercased())
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.top, 8)
+                        .padding(.bottom, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(Array(section.hits.enumerated()), id: \.offset) { _, hit in
+                        row(hit)
+                    }
                 }
             }
         }
@@ -144,6 +154,18 @@ struct TopBar: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor)))
         .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
         .zIndex(100)
+    }
+
+    /// The text with the words you searched for in bold accent colour, so it is clear why a result matched.
+    private func highlighted(_ text: String) -> AttributedString {
+        var out = AttributedString(text)
+        for r in SearchIndex.matchRanges(of: query, in: text) {
+            guard let lower = AttributedString.Index(r.lowerBound, within: out),
+                  let upper = AttributedString.Index(r.upperBound, within: out) else { continue }
+            out[lower..<upper].foregroundColor = Color.brandAccentText
+            out[lower..<upper].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return out
     }
 
     private func row(_ hit: SearchHit) -> some View {
@@ -159,8 +181,8 @@ struct TopBar: View {
             HStack(spacing: 8) {
                 Image(systemName: icon).foregroundStyle(.secondary).frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.medium)).lineLimit(1)
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(highlighted(title)).font(.body.weight(.medium)).lineLimit(1)
+                    Text(highlighted(detail)).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }

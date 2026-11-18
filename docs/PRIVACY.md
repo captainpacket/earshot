@@ -8,14 +8,19 @@ Every model runs on this Mac. There is no account and no cloud, and Earshot neve
  Audio is recorded, transcribed (Whisper), labelled by speaker and
 summarized (Apple's on-device model) on this Mac. There is no account, no server and no analytics.
 Earshot itself sends nothing about you or your recordings anywhere. The activity log records steps
-and results, never what was said.
+and results, never what was said: when a tool fails, the log gets its name and exit code, and the
+error text, which can quote the recording, is shown in the app only. The log and the notes file can
+be read only by your macOS user account.
+Notes you type while recording a meeting are saved beside that recording (`.notes.md`, readable only by
+you) and go to Apple's on-device model with the transcript when it is summarized.
 
 ## What can leave the Mac, or be seen
 
 
-- **One-time downloads.** The speech models, the speaker packages (`sherpa-onnx`, fetched by `uv` the
-  first time speakers are detected) and Apple's on-device model are downloaded once. After that,
-  nothing needs the internet.
+- **One-time downloads.** The speech and speaker models are fetched by Earshot from Hugging Face and
+  GitHub only when you click **Download**, each checked against a fixed SHA-256, with nothing about
+  you sent. Apple's on-device model is downloaded by macOS. The tools that run the models are inside
+  the app. After that, nothing needs the internet.
 - **The clipboard.** When dictated text cannot be typed safely (Earshot is not allowed to type, or you
   switched windows), it is left on the clipboard. It stays there until you copy something else, and a
   clipboard-history tool may record it.

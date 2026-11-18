@@ -202,14 +202,15 @@ struct DictationSettingsView: View {
                 SettingsSection("Corrections", dimmed: !enabled) {
                     SettingsRow("Fix words it mishears",
                                 detail: "Whole words only, ignoring case. The longest match wins.") {
-                        Button("Add") {
+                        Button {
                             corrections.append(CorrectionRow(heard: "", write: ""))
+                        } label: {
+                            Label("Add Correction", systemImage: "plus").lineLimit(1).fixedSize()
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
                     }
                     ForEach($corrections) { $row in
-                        HStack {
+                        HStack(spacing: 10) {
                             TextField("What it hears", text: $row.heard)
                                 .textFieldStyle(.roundedBorder)
                             Image(systemName: "arrow.right").foregroundStyle(.secondary)
@@ -219,15 +220,20 @@ struct DictationSettingsView: View {
                                 corrections.removeAll { $0.id == row.id }
                             } label: {
                                 Image(systemName: "trash")
+                                    .frame(width: 24, height: 24)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("Remove this correction")
+                            .accessibilityLabel("Remove this correction")
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 10)
                     }
                     if corrections.isEmpty {
-                        Text("No corrections yet. Example: ear shot → Earshot")
-                            .font(.caption)
+                        Text("No corrections yet. Press Add Correction, for example: ear shot → Earshot")
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)

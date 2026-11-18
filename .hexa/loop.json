@@ -1,4 +1,6 @@
 {
+  "adr": "ADR-2611142200",
+  "gate": "cd EarshotApp && bash Tests/run.sh >/dev/null && swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macosx26.4 *.swift && bash Tests/render.sh >/dev/null && test -s /tmp/earshot-ui/setup-card.png && test -s /tmp/earshot-ui/setup-card-narrow.png && grep -q SetupChecklistTests Tests/run.sh && test \"$(grep -c \"AXIsProcessTrustedWithOptions\" DictationService.swift)\" -eq 1 && grep -q \"promptedThisLaunch\" DictationService.swift",
   "sessions": {
     "10bfdb96-8c1b-46ac-ad63-2e3bcba7d177": {
       "adr": "ADR-2611101015",
@@ -481,5 +483,49 @@
       ],
       "updated": "2026-11-05T18:30:34.540544+00:00"
     }
-  }
+  },
+  "stage": "gate",
+  "tasks": [
+    {
+      "done_at": "2026-11-14T23:46:08.807894+00:00",
+      "status": "done",
+      "title": "HelperRun: helpers time out, their child processes die, log lines never carry helper output (A1, A2)"
+    },
+    {
+      "done_at": "2026-11-14T23:46:08.816595+00:00",
+      "status": "done",
+      "title": "PrivateFiles: notes.json, its folder and Earshot.log are owner-only (A3)"
+    },
+    {
+      "done_at": "2026-11-14T23:46:08.825126+00:00",
+      "status": "done",
+      "title": "Wire into Library, summary log line, docs, ADR status"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.723337+00:00",
+      "status": "done",
+      "title": "A4: turning Dictation off discards the capture and any transcript still on its way"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.731967+00:00",
+      "status": "done",
+      "title": "A5: a note or dictation cannot start while a meeting waits for the microphone"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.740469+00:00",
+      "status": "done",
+      "title": "A6: notes keep 10,000 and say when the oldest is removed"
+    },
+    {
+      "done_at": "2026-11-15T00:03:37.748963+00:00",
+      "status": "done",
+      "title": "A7: the Tidy-up timeout fires even if the model ignores cancellation"
+    },
+    {
+      "done_at": "2026-11-15T00:25:00.402082+00:00",
+      "status": "done",
+      "title": "B1: failed and untranscribed rows on Home show Try Again / Transcribe / Move to Trash buttons"
+    }
+  ],
+  "updated": "2026-11-15T01:08:24.542534+00:00"
 }

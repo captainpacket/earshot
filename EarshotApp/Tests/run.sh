@@ -28,7 +28,7 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dict
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library SearchIndex.swift Tests/SearchTests.swift -o "$out/search-tests"
 "$out/search-tests"
 # DictationLogTests also uses @main and fails itself if fewer than 17 checks ran.
-swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library DictationLog.swift Tests/DictationLogTests.swift -o "$out/dictation-log-tests"
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library PrivateFiles.swift DictationLog.swift Tests/DictationLogTests.swift -o "$out/dictation-log-tests"
 "$out/dictation-log-tests"
 # NoteSessionTests also uses @main and fails itself if fewer than 17 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift NoteSession.swift Tests/NoteSessionTests.swift -o "$out/note-session-tests"
@@ -40,11 +40,32 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dict
 python3 -I ../scripts/earshot-mcp-test
 # earshot-mcp hardening: hostile filesystem and protocol input; it fails itself if fewer than 100 checks ran.
 python3 -I ../scripts/earshot-mcp-hardening-test
-# speakers: the transcript rewrite must be atomic (readers see old or new, never partial); fails itself if fewer than 7 checks ran.
-python3 -I ../scripts/speakers-test
+# SpeakerMergeTests (ADR-2611141800): the native speakers tool matches the Python oracle byte for byte, and its
+# transcript rewrite is atomic (readers see old or new, never partial). Fails itself if fewer than 25 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Tools/AudioDecode.swift Tools/SpeakerMerge.swift Tests/SpeakerMergeTests.swift -o "$out/speaker-merge-tests"
+"$out/speaker-merge-tests"
 # HighlightTests also uses @main and fails itself if fewer than 30 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift WindowHighlight.swift Tests/HighlightTests.swift -o "$out/highlight-tests"
 "$out/highlight-tests"
+# PreferencesMigrationTests: settings under the old bundle IDs are copied once; fails itself if fewer than 17 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library PreferencesMigration.swift Tests/PreferencesMigrationTests.swift -o "$out/prefs-migration-tests"
+"$out/prefs-migration-tests"
+# HelperRunTests (ADR-2611072100 A1, A2): a hung helper is stopped with its children, and log lines never carry
+# helper output. Fails itself if fewer than 27 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library HelperRun.swift Tests/HelperRunTests.swift -o "$out/helper-run-tests"
+"$out/helper-run-tests"
+# PrivateFilesTests (ADR-2611072100 A3): notes.json, its folder and the log are owner-only. Fails itself if fewer than 15 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library PrivateFiles.swift DictationLog.swift Tests/PrivateFilesTests.swift -o "$out/private-files-tests"
+"$out/private-files-tests"
+# HomeActionTests (ADR-2611072100 B1): which buttons a Home row shows. Fails itself if fewer than 15 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Brand.swift BrandColors.swift HomeView.swift Tests/HomeActionTests.swift -o "$out/home-action-tests"
+"$out/home-action-tests"
+# MeetingNotesTests (ADR-2611142100): notes typed during a meeting reach the summary. Fails itself if fewer than 7 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library MeetingNotes.swift Tests/MeetingNotesTests.swift -o "$out/meeting-notes-tests"
+"$out/meeting-notes-tests"
+# SetupChecklistTests (ADR-2611142200): the first-launch setup card. Fails itself if fewer than 15 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Brand.swift BrandColors.swift SetupCard.swift Tests/SetupChecklistTests.swift -o "$out/setup-checklist-tests"
+"$out/setup-checklist-tests"
 # SubmitTests also uses @main and fails itself if fewer than 15 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Dictation.swift Tests/SubmitTests.swift -o "$out/submit-tests"
 "$out/submit-tests"
@@ -77,6 +98,9 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Reco
 # CallOfferPanelTests (ADR-2611130933) also uses @main and fails itself if fewer than 10 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library CallStart.swift Tests/CallOfferPanelTests.swift -o "$out/call-offer-panel-tests"
 "$out/call-offer-panel-tests"
+# ModelCatalogTests (ADR-2611141630) also uses @main and fails itself if fewer than 25 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library ModelCatalog.swift Tests/ModelCatalogTests.swift -o "$out/model-catalog-tests"
+"$out/model-catalog-tests"
 # SummaryFormatTests (ADR-2611181715) also uses @main and fails itself if fewer than 88 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library SummaryFormat.swift Tests/SummaryFormatTests.swift -o "$out/summary-format-tests"
 "$out/summary-format-tests"

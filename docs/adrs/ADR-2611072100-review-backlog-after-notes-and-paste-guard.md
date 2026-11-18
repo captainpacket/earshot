@@ -17,6 +17,19 @@ by ⌘K. README, Settings and Help wording corrected where they promised more th
 ## Decision: do these, in this order, each as its own gated change
 
 ### A. Safety and privacy (first)
+
+*Done 2026-11-14:* A1 (`HelperRun`: a time limit from the recording's length, 15 minutes at least,
+two minutes for a clip; on timeout the helper and its child processes get SIGTERM, then SIGKILL), A2 (log
+lines carry the helper's name and exit code, or an error's domain and code, never its text) and A3
+(`PrivateFiles`: `Earshot.log` and `notes.json` are 600, the notes folder 700). Gated by `HelperRunTests`
+and `PrivateFilesTests`.
+
+*Done 2026-11-14:* A4 (turning Dictation off sends `.disable`: a capture is discarded, and a transcription
+still running is dropped by a generation check, so nothing is typed), A5 (`meetingHoldsMicrophone` is true from
+the click on Record, including the permission prompt, and gates notes and dictation), A6 (notes keep 10,000;
+when the limit removes old notes the app says how many) and A7 (`DictationCleanup.firstResult` resumes at the
+limit and cancels the model without awaiting it; a task group waited for the model, which a test now shows).
+
 1. `Library.run` has no timeout and blocks a thread on a stuck helper (`Earshot.swift`, the run function).
 2. Logs: `Earshot.swift` logs `\(error)` and the last stderr lines of the helpers at three places; log a
    fixed message and the exit code, keep the tail for the UI only.
@@ -29,6 +42,18 @@ by ⌘K. README, Settings and Help wording corrected where they promised more th
    cancellation; verify with a test, and race with a continuation if it does not.
 
 ### B. Design (from the design review, worst first)
+
+*Done 2026-11-14:* B1 (Home rows show Transcribe, or Try Again and Move to Trash; Try Again retries the
+step that failed, tracked in `Library.failedStep`; `HomeActionTests`, scenes `home-actions` and
+`home-actions-narrow`) and the delete confirmation in B8 (Notes asks before deleting one note).
+
+*Done 2026-11-14, the rest of B:* B2 (Settings is cards, `SettingsPage.swift`), B3 (Translate is in Settings →
+Transcription and kept between launches; the toolbar is gone), B4 (menu bar panel `MenuBarPanelView.swift` and
+the Listening pill restyled; Tidying shows sparkles), B5 (Your notes while recording, ADR-2611142100), B6 (9-10 pt
+labels raised to 12 pt, the breadcrumb slash to secondary), B7 (search results grouped under Recordings, Notes,
+Settings, with the matched words highlighted) and B8 (Add Correction label, roomier correction rows). Each has a
+render scene at the real width and at 380 pt.
+
 1. Failed and untranscribed rows on Home need a visible action (Retry, Transcribe, Delete); today it is a
    context menu only.
 2. Settings is still the old grouped form; give it card pages like Dictation.

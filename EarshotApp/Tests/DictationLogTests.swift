@@ -32,7 +32,29 @@ func entry(_ text: String, _ t: TimeInterval, app: String? = "Mail", seconds: Do
         var small = DictationLog(limit: 3)
         for i in 1...5 { small.add(entry("n\(i)", Double(i))) }
         checkTrue("only the newest are kept when the limit is reached", small.entries.map(\.text) == ["n5", "n4", "n3"], "\(small.entries.map(\.text))")
-        checkTrue("the default limit is 2000", DictationLog().limit == 2000)
+        checkTrue("the default limit is 10000", DictationLog().limit == 10000)
+
+        // MARK: what the limit removes is reported (ADR-2611072100 A6)
+        var full = DictationLog(limit: 2)
+        checkTrue("adding below the limit removes nothing", full.add(entry("a", 1)).isEmpty)
+        _ = full.add(entry("b", 2))
+        let dropped = full.add(entry("c", 3))
+        checkTrue("adding past the limit returns the oldest note", dropped.map(\.text) == ["a"], "\(dropped.map(\.text))")
+        checkTrue("a note older than all the rest is the one returned", full.add(entry("old", 0)).map(\.text) == ["old"])
+        var blank = DictationLog(limit: 1)
+        _ = blank.add(entry("kept", 1))
+        checkTrue("a blank note removes nothing", blank.add(entry("  ", 2)).isEmpty && blank.entries.map(\.text) == ["kept"])
+        checkTrue("no notice when nothing was removed", DictationLog.droppedNotice(count: 0, limit: 10000) == nil)
+        checkTrue("one removed note is reported",
+                  DictationLog.droppedNotice(count: 1, limit: 10000)
+                    == "Notes keeps the newest 10,000 notes, so the oldest one was removed.",
+                  DictationLog.droppedNotice(count: 1, limit: 10000) ?? "nil")
+        checkTrue("several removed notes are counted",
+                  DictationLog.droppedNotice(count: 3, limit: 2000)
+                    == "Notes keeps the newest 2,000 notes, so the oldest 3 were removed.",
+                  DictationLog.droppedNotice(count: 3, limit: 2000) ?? "nil")
+        checkTrue("a small limit has no comma", DictationLog.droppedNotice(count: 1, limit: 500)
+                    == "Notes keeps the newest 500 notes, so the oldest one was removed.")
 
         // MARK: removing
         var r = DictationLog()
@@ -72,7 +94,7 @@ func entry(_ text: String, _ t: TimeInterval, app: String? = "Mail", seconds: Do
         checkTrue("the file is readable JSON with the words in it", text.contains("Hello there") && text.hasPrefix("[") || text.hasPrefix("{"))
 
         print("\(checks) checks, \(failures) failed")
-        if checks < 17 { print("VACUOUS: only \(checks) checks ran, need 17"); exit(1) }
+        if checks < 25 { print("VACUOUS: only \(checks) checks ran, need 25"); exit(1) }
         exit(failures == 0 ? 0 : 1)
     }
 }

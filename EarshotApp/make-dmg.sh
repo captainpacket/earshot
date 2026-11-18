@@ -20,4 +20,12 @@ rm -f "$OUT"
 hdiutil create -volname "Earshot $version" -srcfolder "$stage" -fs APFS -format UDZO -ov "$OUT" >/dev/null
 hdiutil verify "$OUT" >/dev/null
 
+# A Developer ID build signs the disk image too, so notarize.sh can notarize and staple it
+# (ADR-2611141600). The app inside must already be signed with the same identity by build.sh.
+if [[ -n ${EARSHOT_SIGN_IDENTITY:-} ]]; then
+  codesign --force --timestamp --sign "$EARSHOT_SIGN_IDENTITY" "$OUT"
+  codesign --verify --strict "$OUT"
+  echo "Signed: $OUT. Next: bash EarshotApp/notarize.sh $OUT"
+fi
+
 echo "Created: $OUT"

@@ -19,12 +19,12 @@ struct EarshotApp: App {
     @StateObject private var nav = Navigator()
 
     init() {
-        Prefs.migrate()
+        PrefsMigration.run()
     }
 
     var body: some Scene {
         WindowGroup(id: MainWindow.id) {
-            ContentView(lib: library, nav: nav)
+            ContentView(lib: library, nav: nav, models: library.models)
                 .frame(minWidth: 1180, minHeight: 560)
                 // Files opened from Finder ("Open With", or dropped on the Dock icon).
                 .onOpenURL { library.importFile($0) }
@@ -200,10 +200,19 @@ final class Library: ObservableObject {
     @Published var transcribing: Set<Recording.ID> = []
     @Published var summarizing: Set<Recording.ID> = []
     @Published var findingSpeakers: Set<Recording.ID> = []
-    @Published var errors: [Recording.ID: String] = [:]
+    @Published var errors: [Recording.ID: String] = [:] {
+        didSet { failedStep = failedStep.filter { errors[$0.key] != nil } }
+    }
+    /// Which step an error came from, so Home's Try Again retries that step (ADR-2611072100 B1).
+    @Published private(set) var failedStep: [Recording.ID: HomeAction.Step] = [:]
     @Published var recording = false
+    /// Notes typed on the recording screen; saved beside the recording when it stops (ADR-2611142100).
+    @Published var meetingNotes = ""
     @Published var startedAt: Date?
-    @Published var translate = false
+    /// Translate to English. Kept between launches now that it lives in Settings (ADR-2611072100 B3).
+    @Published var translate = UserDefaults.standard.bool(forKey: Prefs.translate) {
+        didSet { UserDefaults.standard.set(translate, forKey: Prefs.translate) }
+    }
     @Published var notice: String?
     @Published var renaming: Recording.ID?  // drives the Rename sheet
     @Published var editingSummary = false
@@ -239,15 +248,27 @@ final class Library: ObservableObject {
     private var recorder: MicRecorder?
     // True while waiting for the microphone permission answer, so a second click can't start a second recorder.
     private var starting = false
+    /// A meeting has the microphone from the click on Record, including while macOS asks for permission,
+    /// so a note or a dictation cannot start in that gap (ADR-2611072100 A5).
+    var meetingHoldsMicrophone: Bool { recording || starting }
     private var savedTranscript = ""
     let dictation = DictationService()
     let notes = NotesStore()
     let noteRecorder = NoteRecorder()
+    /// Downloads the speech and speaker models on first run (ADR-2611141630).
+    let models = ModelDownloader()
+    /// Recordings that could not be transcribed because a model was missing; transcribed once it arrives.
+    private var waitingForModels: Set<Recording.ID> = []
+    func isWaitingForModels(_ id: Recording.ID) -> Bool { waitingForModels.contains(id) }
 
     init() {
         dir = home.appendingPathComponent("Recordings/whisper")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         log("Earshot \(AppVersion.display) started")
+        models.log = { [weak self] in self?.log($0) }
+        if models.needsRequired {
+            log("models missing: \(models.missingRequired.map(\.installedPath).joined(separator: ", "))")
+        }
         // Leftover temporary audio from a crashed or killed run; nothing can be capturing yet.
         let tmp = NSTemporaryDirectory()
         for name in (try? FileManager.default.contentsOfDirectory(atPath: tmp)) ?? []
@@ -264,11 +285,11 @@ final class Library: ObservableObject {
         }
         dictation.isMeetingRecording = { [weak self] in
             guard let self else { return false }
-            return self.recording || self.noteRecorder.recordingSince != nil || self.noteRecorder.transcribing
+            return self.meetingHoldsMicrophone || self.noteRecorder.recordingSince != nil || self.noteRecorder.transcribing
         }
         dictation.scriptPath = { [weak self] in self?.bin("transcribe") ?? "" }
         dictation.speakScriptPath = { [weak self] in self?.bin("earshot-speak") ?? "" }
-        dictation.runHelper = { await Library.run($0) }
+        dictation.runHelper = { await Library.run($0, timeout: HelperRun.clipTimeout).userMessage }
         dictation.log = { [weak self] in self?.log($0) }
         dictation.tidy = { text in
             let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
@@ -277,18 +298,20 @@ final class Library: ObservableObject {
             return try? await session.respond(to: text).content
         }
         dictation.microphoneID = { UserDefaults.standard.string(forKey: MicRecorder.settingKey) ?? "" }
-        noteRecorder.isMeetingRecording = { [weak self] in self?.recording ?? false }
+        noteRecorder.isMeetingRecording = { [weak self] in self?.meetingHoldsMicrophone ?? false }
         noteRecorder.isDictationBusy = { [weak self] in self?.dictation.isBusy ?? false }
         noteRecorder.scriptPath = { [weak self] in self?.bin("transcribe") ?? "" }
-        noteRecorder.runHelper = { await Library.run($0) }
+        noteRecorder.runHelper = { await Library.run($0, timeout: HelperRun.clipTimeout).userMessage }
         noteRecorder.microphoneID = { UserDefaults.standard.string(forKey: MicRecorder.settingKey) ?? "" }
         noteRecorder.log = { [weak self] in self?.log($0) }
         noteRecorder.onNotice = { [weak self] in self?.notice = $0 }
         noteRecorder.onSaved = { [weak self] text, secs in
             guard let self else { return }
-            self.notes.add(text: text, seconds: secs)
+            let removed = self.notes.add(text: text, seconds: secs)
             if self.notes.saveFailed {
                 self.notice = "The note could not be saved to disk, so it will be gone after you quit."
+            } else if let trimmed = DictationLog.droppedNotice(count: removed, limit: self.notes.limit) {
+                self.notice = trimmed
             }
         }
         dictation.refresh()
@@ -421,7 +444,7 @@ final class Library: ObservableObject {
             log("recording started with \(r.deviceName): \(url.path)")
         } catch {
             notice = "Could not start recording: \(error.localizedDescription)"
-            log("recording failed: \(error)")
+            log("recording failed: \(Self.logDescription(error))")
         }
     }
 
@@ -539,10 +562,22 @@ final class Library: ObservableObject {
             notice = m
         }
         guard FileManager.default.fileExists(atPath: r.url.path) else { return }
+        saveMeetingNotes(for: r.url)
         reload()
         selection = r.url.lastPathComponent
         tab = .summary
         transcribe(r.url.lastPathComponent)
+    }
+
+    /// Saves what was typed in Your notes beside the recording, owner-only, then empties the box.
+    private func saveMeetingNotes(for audio: URL) {
+        let notes = meetingNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        meetingNotes = ""
+        guard !notes.isEmpty else { return }
+        if !PrivateFiles.writeAtomically(Data(notes.utf8), to: MeetingNotes.url(for: audio), tightenFolder: false) {
+            notice = "Your notes could not be saved beside the recording."
+            log("meeting notes not saved")
+        }
     }
 
     /// Input loudness in decibels (about -60 quiet to 0 loud), for the level bar.
@@ -583,6 +618,19 @@ final class Library: ObservableObject {
 
     func transcribe(_ id: Recording.ID) {
         guard !transcribing.contains(id) else { return }
+        models.refresh()
+        let needed: Set<ModelGroup> = translate ? [.speech, .translate] : [.speech]
+        let missing = ModelCatalog.missing(needed, root: models.root)
+        if !missing.isEmpty {
+            log("transcribe waiting for models: \(id) needs \(missing.map(\.installedPath).joined(separator: ", "))")
+            waitingForModels.insert(id)
+            errors[id] = missing.contains { $0.group == .translate } && !models.needsRequired
+                ? "Translate needs its model. Download it, or turn Translate off and transcribe again."
+                : "Download the speech models first, with Download at the top of Recordings. "
+                    + "This recording is transcribed as soon as they arrive."
+            return
+        }
+        waitingForModels.remove(id)
         let path = dir.appendingPathComponent(id).path
         log("transcribing: \(path)")
         transcribing.insert(id)
@@ -590,12 +638,14 @@ final class Library: ObservableObject {
 
         let args = [bin("transcribe")] + (translate ? ["-t"] : []) + [path]
 
+        let audio = dir.appendingPathComponent(id)
         Task {
-            let failure = await Self.run(args)
+            let outcome = await Self.run(args, timeout: await Self.jobTimeout(audio))
             transcribing.remove(id)
-            log("transcribe finished: \(failure ?? "ok")")
-            if let failure {
+            log(outcome.logLine("transcribe"))
+            if let failure = outcome.userMessage {
                 errors[id] = "Transcription failed:\n\(failure)"
+                failedStep[id] = .transcribe
                 return
             }
             if selection == id { loadSelected() }
@@ -609,8 +659,13 @@ final class Library: ObservableObject {
         }
     }
 
-    /// A helper script: the copy inside the app (so a DMG install works on its own), else ~/.local/bin.
+    /// A helper: the copy inside the app (so a DMG install works on its own), else ~/.local/bin.
+    /// Native helpers (speakers) are in Contents/MacOS, scripts (transcribe) in Contents/Resources.
     func bin(_ name: String) -> String {
+        if let native = Bundle.main.url(forAuxiliaryExecutable: name),
+           FileManager.default.isExecutableFile(atPath: native.path) {
+            return native.path
+        }
         if let bundled = Bundle.main.url(forResource: name, withExtension: nil),
            FileManager.default.isExecutableFile(atPath: bundled.path) {
             return bundled.path
@@ -618,31 +673,25 @@ final class Library: ObservableObject {
         return home.appendingPathComponent(".local/bin/\(name)").path
     }
 
-    /// Runs a helper script off the main thread. Returns nil on success, or the last lines of its error output.
-    nonisolated static func run(_ args: [String]) async -> String? {
-        await Task.detached {
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            p.arguments = args
-            // Apps opened from Finder get a bare PATH; add Homebrew (ffmpeg, whisper-cli) and ~/.local/bin (uv).
-            var env = ProcessInfo.processInfo.environment
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-            p.environment = env
-            let err = Pipe()
-            p.standardError = err
-            p.standardOutput = FileHandle.nullDevice
-            do {
-                try p.run()
-                let errData = err.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                guard p.terminationStatus != 0 else { return nil }
-                let lines = String(decoding: errData, as: UTF8.self).split(separator: "\n")
-                return lines.suffix(3).joined(separator: "\n")
-            } catch {
-                return error.localizedDescription
-            }
-        }.value
+    /// Runs a helper off the main thread, stopping it (and what it started) after `timeout` seconds.
+    nonisolated static func run(_ args: [String], timeout: TimeInterval) async -> HelperOutcome {
+        // The helpers use the tools bundled in the app. Homebrew stays on PATH only as the fallback
+        // for files AVFoundation can't decode (ffmpeg, for Ogg and WebM) and for source builds.
+        var env = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        return await HelperRun.run(["/usr/bin/env"] + args, timeout: timeout, environment: env)
+    }
+
+    /// The time limit for a job on this recording, from its length (ADR-2611072100 A1).
+    nonisolated static func jobTimeout(_ audio: URL) async -> TimeInterval {
+        HelperRun.timeout(audioSeconds: try? await AVURLAsset(url: audio).load(.duration).seconds)
+    }
+
+    /// An error for the log: its domain and code, never its description, which can quote what was said.
+    nonisolated static func logDescription(_ error: Error) -> String {
+        let ns = error as NSError
+        return "\(ns.domain) \(ns.code)"
     }
 
     // MARK: Speakers
@@ -652,8 +701,15 @@ final class Library: ObservableObject {
         guard !findingSpeakers.contains(id), !transcribing.contains(id) else { return }
         let path = dir.appendingPathComponent(id).path
         guard FileManager.default.fileExists(atPath: (path as NSString).deletingPathExtension + ".json") else {
+            failedStep[id] = .transcribe
             errors[id] = "Transcribe this recording again first: speaker detection needs the word timings "
                 + "that newer transcriptions save."
+            return
+        }
+        if !ModelCatalog.missing([.speakers], root: models.root).isEmpty {
+            // Not an error worth a red box: the transcript is fine, it just has no names yet.
+            log("speakers skipped, models missing: \(id)")
+            summarize(id, automatic: true)
             return
         }
         findingSpeakers.insert(id)
@@ -661,12 +717,14 @@ final class Library: ObservableObject {
         log("finding speakers: \(id)")
         let count = count ?? UserDefaults.standard.integer(forKey: Prefs.speakerCount)
         let args = [bin("speakers"), path] + (count > 1 ? ["-n", String(count)] : [])
+        let audio = dir.appendingPathComponent(id)
         Task {
-            let failure = await Self.run(args)
+            let outcome = await Self.run(args, timeout: await Self.jobTimeout(audio))
             findingSpeakers.remove(id)
-            log("speakers finished: \(failure ?? "ok")")
-            if let failure {
+            log(outcome.logLine("speakers"))
+            if let failure = outcome.userMessage {
                 errors[id] = "Speaker detection failed:\n\(failure)"
+                failedStep[id] = .speakers
             }
             if selection == id { loadSelected() }
             summarize(id, automatic: true)
@@ -747,6 +805,7 @@ final class Library: ObservableObject {
         let text = (try? String(contentsOf: r.transcriptURL, encoding: .utf8)) ?? ""
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errors[id] = "There is no speech in the transcript to summarize."
+            failedStep[id] = .transcribe
             return
         }
         let chosen = SummaryTemplate.find(template ?? templateID(for: r))
@@ -756,7 +815,10 @@ final class Library: ObservableObject {
         Task {
             do {
                 let length = try? await AVURLAsset(url: r.audio).load(.duration).seconds
-                let md = try await Summarizer.summarize(text, template: chosen, date: r.date, seconds: length)
+                // Notes typed during the meeting go first, labelled as the recorder's own (ADR-2611142100).
+                let notes = try? String(contentsOf: MeetingNotes.url(for: r.audio), encoding: .utf8)
+                let material = MeetingNotes.compose(transcript: text, notes: notes)
+                let md = try await Summarizer.summarize(material, template: chosen, date: r.date, seconds: length)
                 try md.write(to: r.summaryURL, atomically: true, encoding: .utf8)
                 summarizing.remove(id)
                 log("summary finished: \(md.count) chars")
@@ -768,7 +830,8 @@ final class Library: ObservableObject {
                 // The earlier summary is still there, with the old names.
                 if let renames = pendingRenames.removeValue(forKey: id) { renameInSummary(id, renames: renames) }
                 errors[id] = "Summary failed: \(Summarizer.describe(error))"
-                log("summary failed: \(error)")
+                failedStep[id] = .summary
+                log("summary failed: \(Self.logDescription(error))")
             }
         }
     }
@@ -835,7 +898,7 @@ final class Library: ObservableObject {
 
     func moveToTrash(_ r: Recording) {
         let json = URL(fileURLWithPath: r.audio.deletingPathExtension().path + ".json")
-        for url in [r.audio, r.transcriptURL, r.srtURL, r.summaryURL, json, r.nameURL]
+        for url in [r.audio, r.transcriptURL, r.srtURL, r.summaryURL, json, r.nameURL, MeetingNotes.url(for: r.audio)]
         where FileManager.default.fileExists(atPath: url.path) || url == r.audio {
             try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
         }
@@ -854,16 +917,19 @@ final class Library: ObservableObject {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
+    /// A model download finished: transcribe what was waiting for it, if its models are now here.
+    func modelsArrived() {
+        models.refresh()
+        for id in waitingForModels where items.contains(where: { $0.id == id }) {
+            let needed: Set<ModelGroup> = translate ? [.speech, .translate] : [.speech]
+            if ModelCatalog.missing(needed, root: models.root).isEmpty { transcribe(id) }
+        }
+    }
+
     func log(_ message: String) {
         let url = home.appendingPathComponent("Library/Logs/Earshot.log")
-        let line = "\(Date().formatted(.iso8601)) \(message)\n"
-        if let h = try? FileHandle(forWritingTo: url) {
-            h.seekToEndOfFile()
-            h.write(Data(line.utf8))
-            try? h.close()
-        } else {
-            try? line.write(to: url, atomically: true, encoding: .utf8)
-        }
+        // Owner-only, and a symlink in its place is not followed (ADR-2611072100 A3).
+        PrivateFiles.appendLine("\(Date().formatted(.iso8601)) \(message)\n", to: url)
     }
 }
 
@@ -873,6 +939,12 @@ final class Library: ObservableObject {
 /// Returns nil when the process list can't be read; otherwise whether another process
 /// is capturing, plus the bundle ids (or pids, when there is no bundle id) for logging.
 enum OtherAppMicProbe {
+    /// Audio-routing daemons that hold the input open all the time, whether or not anyone is in a call.
+    /// Counting them made Earshot offer to record a "meeting" that was not happening, and kept a
+    /// recording from ever stopping itself. Rogue Amoeba's ARK daemon runs behind SoundSource,
+    /// Loopback and Audio Hijack.
+    nonisolated static let alwaysCapturingDaemons: Set<String> = ["com.rogueamoeba.arkaudiod"]
+
     nonisolated static func otherAppCapturing() -> (Bool, [String])? {
         guard let procs = capturingProcesses() else { return nil }
         let names = procs.map { $0.bundleID ?? "pid \($0.pid)" }
@@ -909,6 +981,7 @@ enum OtherAppMicProbe {
             var bundleAddress = address(kAudioProcessPropertyBundleID)
             if AudioObjectGetPropertyData(id, &bundleAddress, 0, nil, &bundleSize, &bundle) == noErr,
                let name = bundle?.takeRetainedValue() as String?, !name.isEmpty {
+                if alwaysCapturingDaemons.contains(name) { continue }
                 capturing.append((pid: pid, bundleID: name))
             } else {
                 capturing.append((pid: pid, bundleID: nil))
@@ -1082,6 +1155,8 @@ final class MicRecorder: NSObject, AVCaptureFileOutputRecordingDelegate, @unchec
 }
 
 struct SettingsView: View {
+    @Binding var translate: Bool
+    let translateLocked: Bool
     @AppStorage(MicRecorder.settingKey) private var microphoneID = ""
     @AppStorage(Prefs.autoStopMinutes) private var autoStopMinutes = 5
     @AppStorage(Prefs.identifySpeakers) private var identifySpeakers = true
@@ -1121,86 +1196,23 @@ struct SettingsView: View {
     private var chosenMissing: Bool { !microphoneID.isEmpty && !inputs.contains { $0.uniqueID == microphoneID } }
 
     var body: some View {
-        Form {
-            Section {
-                Picker("Microphone", selection: $microphoneID) {
-                    Text("System default (\(defaultName))").tag("")
-                    if chosenMissing { Text("Not connected").tag(microphoneID) }
-                    Divider()
-                    ForEach(inputs, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
-                }
-                if chosenMissing {
-                    Label("This microphone isn't connected. Recordings use the system default until it is.",
-                          systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(Color.brandWarningText)
-                }
-                Picker("Stop when quiet", selection: $autoStopMinutes) {
-                    Text("Never").tag(0)
-                    Text("3 minutes").tag(3)
-                    Text("5 minutes").tag(5)
-                    Text("10 minutes").tag(10)
-                    Text("15 minutes").tag(15)
-                    Text("30 minutes").tag(30)
-                }
-                Toggle("Offer to record when a call starts", isOn: $offerOnCall)
-                Toggle("Open Earshot at login", isOn: Binding(
-                    get: { openAtLogin },
-                    set: { setOpenAtLogin($0) }))
-                if let loginNotice {
-                    HStack {
-                        Label(loginNotice, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(Color.brandWarningText)
-                        if loginStatus == .requiresApproval {
-                            Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
-                        }
-                    }
-                }
-            } header: {
-                Text("Recording")
-            } footer: {
-                Text("Earshot records from this microphone. \"System default\" follows the input chosen in "
-                     + "System Settings → Sound. The audio stays on this Mac. "
-                     + "Earshot stops by itself after this long with no one speaking, and warns you for the last "
-                     + "30 seconds first. During a call in Zoom, Teams, Meet or similar, Earshot sees that the call app "
-                     + "is using the microphone, keeps recording, and stops about a minute after you leave the call. "
-                     + "Without a call it listens to the room, so a quiet meeting may need a longer time or Never. "
-                     + "Earshot has to be running to notice a call, so open it at login and it waits in the menu bar. "
-                     + "It only asks; it never records without your click.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Identify speakers", isOn: $identifySpeakers)
-                Picker("Number of speakers", selection: $speakerCount) {
-                    Text("Detect automatically").tag(0)
-                    Text("1 (no speaker labels)").tag(1)
-                    ForEach(2...10, id: \.self) { Text("\($0)").tag($0) }
-                }
-                .disabled(!identifySpeakers)
-            } header: {
-                Text("Speakers")
-            } footer: {
-                Text("After transcribing, a local voice model labels who spoke when: Speaker 1, Speaker 2… "
-                     + "Rename them in the Transcript tab. If you know how many people were there, choose the "
-                     + "number: it is more accurate than detecting it.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Picker("Default template", selection: $summaryTemplate) {
-                    ForEach(SummaryTemplate.all) { Label($0.name, systemImage: $0.icon).tag($0.id) }
-                }
-            } header: {
-                Text("Summaries")
-            } footer: {
-                Text("New recordings are summarized in this format. You can switch any summary to another "
-                     + "template in its Summary tab.")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-        .frame(maxWidth: 560)
-        .frame(maxWidth: .infinity)
+        RecordingSettingsCards(
+            microphoneID: $microphoneID,
+            microphones: inputs.map { SettingsChoice(id: $0.uniqueID, name: $0.localizedName) },
+            defaultMicrophoneName: defaultName,
+            autoStopMinutes: $autoStopMinutes,
+            offerOnCall: $offerOnCall,
+            openAtLogin: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) }),
+            loginNotice: loginNotice,
+            onOpenLoginItems: loginStatus == .requiresApproval ? { SMAppService.openSystemSettingsLoginItems() } : nil,
+            translate: $translate,
+            translateLocked: translateLocked,
+            identifySpeakers: $identifySpeakers,
+            speakerCount: $speakerCount,
+            summaryTemplate: $summaryTemplate,
+            templates: SummaryTemplate.all.map { SettingsChoice(id: $0.id, name: $0.name, icon: $0.icon) })
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
         .onAppear { inputs = MicRecorder.inputs(); refreshLogin() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshLogin() }
         .onReceive(NotificationCenter.default.publisher(for: AVCaptureDevice.wasConnectedNotification)) { _ in
@@ -1234,7 +1246,7 @@ struct LevelBar: View {
 
 // MARK: - Resource meter
 
-/// Samples CPU and memory for this app plus its helper processes (bash, ffmpeg, whisper-cli),
+/// Samples CPU and memory for this app plus its helper processes (bash, whisper-cli, speakers),
 /// and how busy the GPU is. Whisper runs mostly on the GPU, so CPU alone would look idle.
 @MainActor
 final class ResourceMonitor: ObservableObject {
@@ -1377,7 +1389,7 @@ struct ResourceMeter: View {
         .font(.caption.monospacedDigit())
         .padding(.horizontal, 8)
         .help("""
-            CPU and MEM: this app plus Whisper and ffmpeg while they run (CPU as a share of the whole Mac).
+            CPU and MEM: this app plus Whisper and the speaker tool while they run (CPU as a share of the whole Mac).
             GPU: the whole Mac's graphics chip, where Whisper does most of its work.
             Summaries run inside a macOS system process, so they show in GPU but not in CPU or MEM.
             """)
@@ -1469,6 +1481,57 @@ struct RetryDictationRow: View {
     }
 }
 
+/// The first-launch "Set up Earshot" card with live permission state (ADR-2611142200). Accessibility is
+/// checked every second while the card shows, so its row ticks as soon as it is switched on.
+struct SetupCardHost: View {
+    @AppStorage(DictationPrefs.enabled) private var dictationEnabled = false
+    @AppStorage("setupDictationSkipped") private var dictationSkipped = false
+    @State private var microphone = SetupCardHost.micStatus()
+    @State private var trusted = AXIsProcessTrusted()
+
+    private var checklist: SetupChecklist {
+        SetupChecklist(microphone: microphone, dictationEnabled: dictationEnabled,
+                       accessibilityTrusted: trusted, dictationSkipped: dictationSkipped)
+    }
+
+    var body: some View {
+        SetupCard(
+            checklist: checklist,
+            onAllowMicrophone: {
+                AVCaptureDevice.requestAccess(for: .audio) { _ in
+                    DispatchQueue.main.async { microphone = Self.micStatus() }
+                }
+            },
+            onOpenMicrophoneSettings: { Self.openPrivacy("Privacy_Microphone") },
+            onTurnOnDictation: {
+                dictationEnabled = true
+                DictationService.requestPermissions()
+            },
+            onOpenAccessibilitySettings: { Self.openPrivacy("Privacy_Accessibility") },
+            onSkipDictation: { dictationSkipped = true })
+        .padding(.top, checklist.showsCard ? 20 : 0)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            guard checklist.showsCard else { return }
+            trusted = AXIsProcessTrusted()
+            microphone = Self.micStatus()
+        }
+    }
+
+    static func micStatus() -> SetupChecklist.Mic {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: return .allowed
+        case .notDetermined: return .notAsked
+        default: return .refused
+        }
+    }
+
+    static func openPrivacy(_ anchor: String) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
 /// The panel that opens from the menu bar.
 struct MenuBarPanel: View {
     @ObservedObject var lib: Library
@@ -1476,85 +1539,20 @@ struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                AppIcon(size: 28)
-                Text("Earshot").font(.headline)
-                Spacer()
-                Label("On this Mac", systemImage: "lock.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button(action: lib.toggleRecording) {
-                HStack {
-                    if let start = lib.startedAt {
-                        Image(systemName: "stop.fill")
-                        TimelineView(.periodic(from: start, by: 1)) { ctx in
-                            Text("Stop  " + elapsed(from: start, to: ctx.date)).monospacedDigit()
-                        }
-                    } else {
-                        Image(systemName: "mic.fill")
-                        Text("Record")
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(lib.recording ? Color.red : Color.brandAccent)
-            .controlSize(.large)
-            RetryDictationRow(dictation: lib.dictation)
-
-            if lib.recording {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label(lib.micName ?? "Microphone", systemImage: "mic")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TimelineView(.animation(minimumInterval: 0.08)) { _ in
-                        LevelBar(decibels: lib.micLevel())
-                    }
-                    if let s = lib.endingIn {
-                        Label("No one has spoken for a while. Stopping in \(s) s", systemImage: "hourglass")
-                            .font(.caption)
-                            .foregroundStyle(Color.brandWarningText)
-                        Button("Keep recording") { lib.keepRecording() }
-                            .controlSize(.small)
-                    }
-                }
-            }
-
-            if !lib.items.isEmpty {
-                Divider()
-                Text("Recent").font(.caption).foregroundStyle(.secondary)
-                ForEach(lib.items.prefix(5)) { r in
-                    Button { open(r.id) } label: {
-                        HStack {
-                            Text(r.title).lineLimit(1)
-                            Spacer()
-                            Text(r.date.formatted(date: .omitted, time: .shortened))
-                                .foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Divider()
-            HStack {
-                Button("Open Earshot") { open(nil) }
-                Spacer()
-                Button("Settings…") { openSettings() }
-                Button("Quit") { NSApp.terminate(nil) }
-            }
-            .buttonStyle(.borderless)
-            Text("Version \(AppVersion.display)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .textSelection(.enabled)
-        }
-        .padding(14)
-        .frame(width: 300)
+        MenuBarPanelView(
+            icon: AnyView(AppIcon(size: 28)),
+            recordingSince: lib.startedAt,
+            micName: lib.micName,
+            level: { lib.micLevel() },
+            endingIn: lib.endingIn,
+            recent: lib.items.prefix(5).map { MenuBarRecent(id: $0.id, title: $0.title, date: $0.date) },
+            version: AppVersion.display,
+            extra: AnyView(RetryDictationRow(dictation: lib.dictation)),
+            onRecord: lib.toggleRecording,
+            onKeepRecording: lib.keepRecording,
+            onOpen: { open($0) },
+            onSettings: openSettings,
+            onQuit: { NSApp.terminate(nil) })
     }
 
     private func openSettings() {
@@ -1591,7 +1589,7 @@ struct HelpView: View {
                     AppIcon(size: 72)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Everything stays on this Mac").font(.title.bold())
-                        Text("Earshot has no account, no cloud service and no internet connection. "
+                        Text("Earshot has no account and no cloud service, and after the one-time model download it needs no internet. "
                              + "Your recordings, transcripts and summaries are made and kept on this computer.")
                             .foregroundStyle(.secondary)
                         Text("Earshot \(AppVersion.display)")
@@ -1603,6 +1601,14 @@ struct HelpView: View {
                 section("Try it yourself", "wifi.slash") {
                     para("Turn off Wi-Fi and record something. Transcription and summaries still work, "
                          + "because no step needs the internet.")
+                }
+
+                section("Download the speech models", "arrow.down.circle") {
+                    para("The first time you open Earshot, it asks to download its models (about 1.7 GB) into "
+                         + "~/Models. This is the only time Earshot uses the internet: it fetches the files from "
+                         + "Hugging Face and GitHub, checks each one against a fixed fingerprint (SHA-256), and "
+                         + "sends nothing about you. Translate needs one more model (1.1 GB), offered the first "
+                         + "time you turn Translate on.")
                 }
 
                 section("What does each job", "cpu") {
@@ -1619,7 +1625,11 @@ struct HelpView: View {
                          "Apple's on-device Foundation Model, part of Apple Intelligence. It runs inside macOS on this Mac. "
                          + "Earshot never uses Apple's Private Cloud Compute, the version that runs on Apple's servers.")
                     item("Audio conversion",
-                         "ffmpeg, which changes any audio or video file into the format Whisper reads.")
+                         "macOS itself (AVFoundation), which turns any audio or video file it can play into the format "
+                         + "Whisper reads. For Ogg and WebM, which macOS can't read, Earshot uses ffmpeg if it is installed.")
+                    item("Speakers",
+                         "sherpa-onnx with the pyannote and WeSpeaker voice models, built into the app. It finds who "
+                         + "spoke when and labels the transcript Speaker 1, Speaker 2.")
                 }
 
                 section("Where your files are", "folder") {
@@ -1636,12 +1646,14 @@ struct HelpView: View {
                     item("Back to Recordings", "Open a recording and a Recordings / name link appears at the top left. "
                          + "Click it, press Esc or Command-[, or click Recordings in the sidebar, to return to the list.")
                     item("Record / Stop", "Starts and stops the microphone. The timer shows how long it has recorded. ⌘R.")
+                    item("Your notes", "While recording, type names, decisions and to-dos in the box under the timer. "
+                         + "They are saved beside the recording and its summary uses them.")
                     item("Automatic stop", "If no one speaks for a while, Earshot stops recording by itself. "
                          + "It counts down for 30 seconds first, and Keep recording carries on. "
                          + "Change the time, or turn it off, in Settings. While a call app such as Zoom is using the "
                          + "microphone Earshot keeps recording, and it stops about a minute after the call ends.")
                     item("Import", "Transcribe an audio or video file you already have. You can also drag files into the window. ⌘O.")
-                    item("Translate", "When on, speech in another language is written in English.")
+                    item("Translate", "In Settings → Transcription. When on, speech in another language is written in English.")
                     item("Summarize", "Writes a new summary of the selected recording.")
                     item("Copy", "Copies the open tab, transcript or summary. ⇧⌘C.")
                     item("Finder", "Shows the recording's files in Finder.")
@@ -1762,6 +1774,7 @@ enum Prefs {
     static let autoStopMinutes = "autoStopMinutes"    // Int minutes of silence that stop a recording, 0 = off, default 5 when unset
 
     static let offerOnCall = "offerOnCall"                    // Bool, default true when unset
+    static let translate = "translate"                        // Bool, default false
     static let callOfferIgnoredApps = "callOfferIgnoredApps"  // [String] bundle ids never offered for
 
     /// Whether to offer to record when a call starts: true when the setting is unset.
@@ -1774,20 +1787,6 @@ enum Prefs {
     static func autoStopSeconds(_ defaults: UserDefaults = .standard) -> TimeInterval {
         guard defaults.object(forKey: autoStopMinutes) != nil else { return 300 }
         return TimeInterval(defaults.integer(forKey: autoStopMinutes) * 60)
-    }
-
-    /// The bundle ID before the app was named Earshot. Its settings are copied over once.
-    static let oldBundleID = "local.whisper.transcribe"
-    private static let migrated = "migratedFromOldBundleID"
-
-    /// Copies settings saved under the old bundle ID, without replacing any set since.
-    static func migrate(from oldID: String = oldBundleID, into defaults: UserDefaults = .standard) {
-        guard !defaults.bool(forKey: migrated) else { return }
-        for (key, value) in defaults.persistentDomain(forName: oldID) ?? [:]
-        where defaults.object(forKey: key) == nil {
-            defaults.set(value, forKey: key)
-        }
-        defaults.set(true, forKey: migrated)
     }
 }
 
@@ -1816,6 +1815,8 @@ struct NotesPage: View {
 struct ContentView: View {
     @ObservedObject var lib: Library
     @ObservedObject var nav: Navigator
+    @ObservedObject var models: ModelDownloader
+    @State private var askTranslateModel = false
     @Environment(\.openWindow) private var openWindow
     @StateObject private var monitor = ResourceMonitor()
     @State private var dropTargeted = false
@@ -1889,12 +1890,35 @@ struct ContentView: View {
             }
             return HomeItem(id: r.id, date: r.date, title: r.title,
                             detail: parts.isEmpty ? "Not transcribed yet" : parts.joined(separator: " · "),
-                            state: state)
+                            state: state,
+                            actions: HomeAction.choices(hasTranscript: r.hasTranscript, state: state,
+                                                        failedStep: lib.failedStep[r.id],
+                                                        waitingForModels: lib.isWaitingForModels(r.id)))
         }
     }
 
     private var recordingsHome: some View {
+        VStack(spacing: 0) {
+            ModelSetupCard(models: models)
+                .padding(.horizontal, 28)  // lines up with HomeView's content
+                .padding(.top, models.needsRequired || models.state != .idle ? 20 : 0)
+            SetupCardHost()
+                .padding(.horizontal, 28)
+            recordingsList
+        }
+    }
+
+    private var recordingsList: some View {
         var home = HomeView(items: homeItems, onOpen: { lib.selection = $0 })
+        home.onAction = { id, kind in
+            guard let r = lib.items.first(where: { $0.id == id }) else { return }
+            switch kind {
+            case .transcribe, .retry(.transcribe): lib.transcribe(id)
+            case .retry(.speakers): lib.findSpeakers(id)
+            case .retry(.summary): lib.summarize(id)
+            case .trash: lib.moveToTrash(r)
+            }
+        }
         home.rowMenu = { item in
             AnyView(Group {
                 if let r = lib.items.first(where: { $0.id == item.id }) {
@@ -1916,11 +1940,14 @@ struct ContentView: View {
         if nav.section == .settings {
             ScrollView {
                 VStack(spacing: 0) {
+                    ModelSetupCard(models: models)
+                        .padding(.horizontal, 20)
+                        .padding(.top, models.needsRequired || models.state != .idle ? 20 : 0)
                     DictationSettingsView(onEnable: { DictationService.requestPermissions() },
                                           onResetPermission: { DictationService.resetAccessibilityPermission() })
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
-                    SettingsView()
+                    SettingsView(translate: $lib.translate, translateLocked: lib.recording)
                 }
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
@@ -2008,7 +2035,6 @@ struct ContentView: View {
         }
         .task(id: lib.items.map(\.id)) { await loadSearchTexts() }
         .navigationTitle("Earshot")
-        .toolbar { HeaderControls(lib: lib) }
         // A status bar along the bottom, as in Finder and Xcode: what's happening, and the meter.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             StatusBar(lib: lib, monitor: monitor)
@@ -2040,6 +2066,22 @@ struct ContentView: View {
         .onChange(of: lib.selection) {
             if lib.selection != nil { nav.section = .recordings }
         }
+        .onChange(of: models.finishedCount) { lib.modelsArrived() }
+        // Translate uses a second, 1.1 GB model that the first download leaves out. Offer it when needed.
+        .onChange(of: lib.translate) {
+            models.refresh()
+            if lib.translate && models.needsTranslate && !models.isDownloading { askTranslateModel = true }
+        }
+        .alert("Translate needs one more model", isPresented: $askTranslateModel) {
+            Button("Download (\(ModelCatalog.size(ModelCatalog.totalBytes(models.missingTranslate))))") {
+                models.download([.translate])
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Not Now", role: .cancel) { lib.translate = false }
+        } message: {
+            Text("The model that writes other languages in English is separate from the speech model. "
+                 + "It downloads once, and then Translate works offline.")
+        }
         .onChange(of: lib.renaming) {
             newName = lib.items.first { $0.id == lib.renaming }?.title ?? ""
         }
@@ -2053,26 +2095,6 @@ struct ContentView: View {
                     .strokeBorder(Color.brandAccent, lineWidth: 3)
                     .allowsHitTesting(false)
             }
-        }
-    }
-}
-
-/// Everything in the window's header bar.
-struct HeaderControls: ToolbarContent {
-    @ObservedObject var lib: Library
-
-    var body: some ToolbarContent {
-        // Icons plus words, so nobody has to guess what a symbol means.
-        ToolbarItemGroup(placement: .primaryAction) {
-            Toggle(isOn: $lib.translate) {
-                Label(lib.translate ? "Translate: On" : "Translate: Off", systemImage: "globe")
-            }
-            .labelStyle(.titleAndIcon)
-            .disabled(lib.recording)
-            .help("""
-                Translate to English. When on, speech in another language is written out in English. \
-                When off, the text stays in the language that was spoken. Applies to the next transcription.
-                """)
         }
     }
 }
@@ -2093,7 +2115,8 @@ struct RecordingNow: View {
         RecordingScreen(start: start, micName: lib.micName ?? "Microphone",
                         level: { lib.micLevel() }, endingIn: lib.endingIn,
                         onKeepRecording: { lib.keepRecording() },
-                        onStop: { lib.toggleRecording() })
+                        onStop: { lib.toggleRecording() },
+                        notes: $lib.meetingNotes)
     }
 }
 

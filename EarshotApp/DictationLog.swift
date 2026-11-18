@@ -14,7 +14,7 @@ struct DictationLog: Equatable {
     var entries: [Entry]
     let limit: Int
 
-    init(entries: [Entry] = [], limit: Int = 2000) {
+    init(entries: [Entry] = [], limit: Int = 10_000) {
         self.limit = limit
         self.entries = entries.enumerated()
             .sorted { $0.element.date != $1.element.date ? $0.element.date > $1.element.date : $0.offset < $1.offset }
@@ -22,14 +22,37 @@ struct DictationLog: Equatable {
         if self.entries.count > limit { self.entries = Array(self.entries.prefix(max(limit, 0))) }
     }
 
-    mutating func add(_ entry: Entry) {
+    /// Adds a note and returns the oldest notes the limit removed, so the caller can say so (ADR-2611072100 A6).
+    @discardableResult
+    mutating func add(_ entry: Entry) -> [Entry] {
         var e = entry
         e.text = e.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !e.text.isEmpty else { return }
+        guard !e.text.isEmpty else { return [] }
         // Insert after every entry that is as new or newer, so equal dates keep the order they arrived in.
         let index = entries.firstIndex { $0.date < e.date } ?? entries.count
         entries.insert(e, at: index)
-        if entries.count > limit { entries.removeLast(entries.count - max(limit, 0)) }
+        guard entries.count > limit else { return [] }
+        let removed = Array(entries.suffix(entries.count - max(limit, 0)))
+        entries.removeLast(removed.count)
+        return removed
+    }
+
+    /// What to tell the user when the limit removed `count` notes, or nil when it removed none.
+    static func droppedNotice(count: Int, limit: Int) -> String? {
+        guard count > 0 else { return nil }
+        let which = count == 1 ? "the oldest one was removed" : "the oldest \(count) were removed"
+        return "Notes keeps the newest \(grouped(limit)) notes, so \(which)."
+    }
+
+    /// 10000 → "10,000", whatever the Mac's region, so the message reads the same in tests and in the app.
+    private static func grouped(_ n: Int) -> String {
+        let digits = Array(String(n))
+        var out = ""
+        for (i, d) in digits.enumerated() {
+            if i > 0, (digits.count - i) % 3 == 0 { out.append(",") }
+            out.append(d)
+        }
+        return out
     }
 
     mutating func remove(id: String) { entries.removeAll { $0.id == id } }
@@ -38,16 +61,12 @@ struct DictationLog: Equatable {
 
     @discardableResult
     func save(to url: URL) -> Bool {
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(entries).write(to: url, options: .atomic)
-            return true
-        } catch {
-            return false
-        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(entries) else { return false }
+        // Owner-only file in an owner-only folder (ADR-2611072100 A3).
+        return PrivateFiles.writeAtomically(data, to: url)
     }
 
     static func load(from url: URL) -> DictationLog {
