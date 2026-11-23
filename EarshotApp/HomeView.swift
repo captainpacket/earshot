@@ -71,13 +71,17 @@ struct HomeView: View {
     let onOpen: (String) -> Void
     var rowMenu: ((HomeItem) -> AnyView)? = nil
     var onAction: ((String, HomeAction.Kind) -> Void)? = nil
+    /// Shown above the greeting, inside the ScrollView: the setup cards. Outside it, their wrapped text
+    /// set the window's minimum height and pushed both columns up under the title bar (1.5.3).
+    let header: AnyView?
 
     private enum Filter { case all, errors }
     @State private var filter: Filter = .all
 
-    init(items: [HomeItem], onOpen: @escaping (String) -> Void) {
+    init(items: [HomeItem], onOpen: @escaping (String) -> Void, header: AnyView? = nil) {
         self.items = items
         self.onOpen = onOpen
+        self.header = header
     }
 
     private var greeting: String {
@@ -108,6 +112,10 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
+            // The header sits in a stack with no spacing, so an empty one (setup done) adds no gap; a
+            // header that shows something brings its own space below it.
+            VStack(alignment: .leading, spacing: 0) {
+            if let header { header }
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(greeting).font(.largeTitle.bold())
@@ -147,6 +155,7 @@ struct HomeView: View {
                         }
                     }
                 }
+            }
             }
             .padding(.horizontal, 28)
             .padding(.top, 24)

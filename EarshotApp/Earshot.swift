@@ -1509,7 +1509,7 @@ struct SetupCardHost: View {
             },
             onOpenAccessibilitySettings: { Self.openPrivacy("Privacy_Accessibility") },
             onSkipDictation: { dictationSkipped = true })
-        .padding(.top, checklist.showsCard ? 20 : 0)
+        .padding(.bottom, checklist.showsCard ? 22 : 0)  // space above Home's greeting, only while shown
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             guard checklist.showsCard else { return }
             trusted = AXIsProcessTrusted()
@@ -1897,19 +1897,15 @@ struct ContentView: View {
         }
     }
 
+    /// Home, with the setup cards as its header: inside its ScrollView, so their wrapped text cannot set
+    /// the window's minimum height (it pushed both columns up under the title bar; Tests/WindowLayoutTests).
     private var recordingsHome: some View {
-        VStack(spacing: 0) {
-            ModelSetupCard(models: models)
-                .padding(.horizontal, 28)  // lines up with HomeView's content
-                .padding(.top, models.needsRequired || models.state != .idle ? 20 : 0)
-            SetupCardHost()
-                .padding(.horizontal, 28)
-            recordingsList
-        }
-    }
-
-    private var recordingsList: some View {
-        var home = HomeView(items: homeItems, onOpen: { lib.selection = $0 })
+        var home = HomeView(items: homeItems, onOpen: { lib.selection = $0 },
+                            header: AnyView(VStack(alignment: .leading, spacing: 0) {
+                                ModelSetupCard(models: models)
+                                    .padding(.bottom, models.needsRequired || models.state != .idle ? 22 : 0)
+                                SetupCardHost()
+                            }))
         home.onAction = { id, kind in
             guard let r = lib.items.first(where: { $0.id == id }) else { return }
             switch kind {

@@ -108,3 +108,7 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Summ
 # Fails itself if fewer than 40 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Chunking.swift SummaryFormat.swift SummaryRecovery.swift Tests/SummaryRecoveryTests.swift -o "$out/summary-recovery-tests"
 "$out/summary-recovery-tests"
+# WindowLayoutTests: Home's setup cards must not push the split view up under the title bar (1.5.3).
+# Hosts a real NavigationSplitView in an NSWindow. Fails itself if fewer than 7 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Brand.swift BrandColors.swift SetupCard.swift HomeView.swift Tests/WindowLayoutTests.swift -o "$out/window-layout-tests"
+"$out/window-layout-tests"
