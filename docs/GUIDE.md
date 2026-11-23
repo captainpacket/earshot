@@ -157,6 +157,9 @@ speakers meeting.m4a -n 3       # exactly 3 speakers
   a long recording is summarized part by part and the parts are merged. A topic that runs across two
   parts can show as two sections next to each other. An hour takes a few minutes. Check names and
   numbers before you share one.
+- **Apple's safety filter** sometimes refuses a passage: swearing, violence, medical talk, or a
+  misheard word can trip it. Earshot leaves that passage out, summarizes the rest, and says under
+  the overview how many passages were left out. The transcript always keeps everything.
 - **Transcripts** can mishear names and jargon. Correct the Transcript tab, then click
   **Summarize** to rewrite the summary.
 - **Summaries** can be corrected directly: click **Edit** above the summary. Earshot marks it

@@ -104,3 +104,7 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Mode
 # SummaryFormatTests (ADR-2611181715) also uses @main and fails itself if fewer than 88 checks ran.
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library SummaryFormat.swift Tests/SummaryFormatTests.swift -o "$out/summary-format-tests"
 "$out/summary-format-tests"
+# SummaryRecoveryTests (ADR-2611230908): a passage Apple's safety filter refuses is skipped, not fatal.
+# Fails itself if fewer than 40 checks ran.
+swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Chunking.swift SummaryFormat.swift SummaryRecovery.swift Tests/SummaryRecoveryTests.swift -o "$out/summary-recovery-tests"
+"$out/summary-recovery-tests"

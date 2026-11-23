@@ -236,7 +236,7 @@ enum SummaryFormat {
 
     /// The Markdown the Summary tab shows and the .summary.md file keeps.
     static func render(title: String, overview: String, merged: MergedSummary, template: SummaryTemplate,
-                       date: Date, seconds: Double?, speakers: [String]) -> String {
+                       date: Date, seconds: Double?, speakers: [String], skipped: Int = 0) -> String {
         var info = [date.formatted(date: .abbreviated, time: .shortened)]
         if let seconds, seconds.isFinite { info.append("\(max(1, Int((seconds / 60).rounded()))) min") }
         if !speakers.isEmpty { info.append("Speakers: " + speakers.joined(separator: ", ")) }
@@ -245,6 +245,7 @@ enum SummaryFormat {
         md += "# \(title.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "#*\""))))\n\n"
         md += "*\(template.name) · \(info.joined(separator: " · "))*\n\n"
         md += "## Overview\n\(overview)\n\n"
+        if let note = skippedNote(skipped) { md += note + "\n\n" }
         for section in merged.sections
         where !section.points.isEmpty && !section.heading.localizedCaseInsensitiveContains("action item") {
             md += "## \(section.heading)\n"
@@ -260,6 +261,15 @@ enum SummaryFormat {
             }
         }
         return md
+    }
+
+    /// The line under the overview when Apple's safety filter refused passages (ADR-2611230908), so a gap
+    /// in the summary is visible. Nil when nothing was left out.
+    static func skippedNote(_ n: Int) -> String? {
+        if n <= 0 { return nil }
+        return n == 1
+            ? "*Apple's on-device model would not summarize 1 passage of this recording, so it is left out.*"
+            : "*Apple's on-device model would not summarize \(n) passages of this recording, so they are left out.*"
     }
 
     /// A bounded digest of the merged summary for the model to write the overview from.

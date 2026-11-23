@@ -1,6 +1,7 @@
 // Summaries from Apple's on-device model (ADR-2611181715). Map-reduce: every part of the
 // transcript gets its own detailed sections and action items; SummaryFormat merges them and
-// a last call writes only the title and overview. Foundation and FoundationModels only.
+// a last call writes only the title and overview. A part the safety filter refuses is halved and,
+// at the smallest size, skipped (SummaryRecovery, ADR-2611230908). Foundation and FoundationModels only.
 
 import Foundation
 import FoundationModels
@@ -113,9 +114,13 @@ enum Summarizer {
         if chunks.isEmpty { throw AppError(message: "There is no speech in the transcript to summarize.") }
 
         var parts: [SummaryPart] = []
+        var skipped = 0
         for (i, chunk) in chunks.enumerated() {
-            parts += try await part(chunk, template: template, index: i + 1, of: chunks.count, budget: partBudget)
+            let r = try await part(chunk, template: template, index: i + 1, of: chunks.count)
+            parts += r.parts
+            skipped += r.skipped
         }
+        try PartRecovery.checkNotAllRefused(parts: parts, skipped: skipped)
         let merged = SummaryFormat.merge(parts, template: template)
 
         // The header sees the merged sections, with fewer points each until it fits.
@@ -141,42 +146,40 @@ enum Summarizer {
             }
         }
         return SummaryFormat.render(title: title, overview: overview, merged: merged, template: template,
-                                    date: date, seconds: seconds, speakers: speakers)
+                                    date: date, seconds: seconds, speakers: speakers, skipped: skipped)
     }
 
-    /// Sections and action items for one chunk. If the model still finds it too long,
-    /// halves it and returns the halves' parts in order.
-    private static func part(_ chunk: String, template: SummaryTemplate, index: Int, of count: Int,
-                             budget: Int, depth: Int = 0, retried: Bool = false) async throws -> [SummaryPart] {
-        let session = LanguageModelSession(model: model,
-                                           instructions: partInstructions(for: template, part: index, of: count))
-        do {
-            let g = try await session.respond(to: chunk, generating: GeneratedPart.self,
+    /// Sections and action items for one chunk. PartRecovery halves it if it is too long, undecodable
+    /// or refused by Apple's safety filter, and skips a passage still refused at the smallest size.
+    private static func part(_ chunk: String, template: SummaryTemplate, index: Int,
+                             of count: Int) async throws -> PartRecoveryResult {
+        let instructions = partInstructions(for: template, part: index, of: count)
+        return try await PartRecovery.run(chunk, generate: { text in
+            let session = LanguageModelSession(model: model, instructions: instructions)
+            let g = try await session.respond(to: text, generating: GeneratedPart.self,
                                               options: GenerationOptions(maximumResponseTokens: partReserve)).content
-            return [SummaryPart(
+            return SummaryPart(
                 sections: g.sections.map { SummarySection(heading: $0.heading, points: $0.points) },
-                actions: g.actionItems.map { SummaryAction(owner: $0.owner, task: $0.task, due: SummaryFormat.groundedDue($0.due, in: chunk)) })]
-        } catch LanguageModelSession.GenerationError.exceededContextWindowSize where depth < 3 {
-            return try await halves(chunk, template: template, index: index, of: count, budget: budget, depth: depth)
-        } catch LanguageModelSession.GenerationError.decodingFailure where !retried {
-            return try await part(chunk, template: template, index: index, of: count, budget: budget,
-                                  depth: depth, retried: true)
-        } catch LanguageModelSession.GenerationError.decodingFailure where depth < 3 {
-            return try await halves(chunk, template: template, index: index, of: count, budget: budget, depth: depth)
-        }
+                actions: g.actionItems.map { SummaryAction(owner: $0.owner, task: $0.task, due: SummaryFormat.groundedDue($0.due, in: text)) })
+        }, classify: partFailure, count: { try await model.tokenCount(for: $0) })
     }
 
-    /// Splits a chunk in two by tokens and summarizes each half, one level deeper.
-    private static func halves(_ chunk: String, template: SummaryTemplate, index: Int, of count: Int,
-                               budget: Int, depth: Int) async throws -> [SummaryPart] {
-        let half = max(1, budget / 2)
-        let pieces = try await TokenChunker.split(chunk, budget: half,
-                                                  count: { try await model.tokenCount(for: $0) })
-        var out: [SummaryPart] = []
-        for h in pieces {
-            out += try await part(h, template: template, index: index, of: count, budget: half, depth: depth + 1)
+    /// FoundationModels errors in PartRecovery's terms. Guided generation runs Apple's default guardrails
+    /// even with .permissiveContentTransformations, so ordinary meeting talk can be refused.
+    static func partFailure(_ error: Error) -> PartFailure {
+        if #available(macOS 27, *), let e = error as? LanguageModelError {
+            switch e {
+            case .contextSizeExceeded: return .tooLong
+            case .guardrailViolation: return .unsafe
+            default: break
+            }
         }
-        return out
+        switch error as? LanguageModelSession.GenerationError {
+        case .exceededContextWindowSize: return .tooLong
+        case .decodingFailure: return .undecodable
+        case .guardrailViolation: return .unsafe
+        default: return .other
+        }
     }
 
     static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {

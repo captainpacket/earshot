@@ -34,5 +34,5 @@ import Foundation
 }
 EOF
 swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library \
-    "$app/Summarizer.swift" "$app/SummaryFormat.swift" "$app/Chunking.swift" "$out/main.swift" -o "$out/summarize"
+    "$app/Summarizer.swift" "$app/SummaryFormat.swift" "$app/SummaryRecovery.swift" "$app/Chunking.swift" "$out/main.swift" -o "$out/summarize"
 "$out/summarize" "$txt" "$template"
