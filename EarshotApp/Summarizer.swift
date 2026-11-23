@@ -167,6 +167,9 @@ enum Summarizer {
     /// FoundationModels errors in PartRecovery's terms. Guided generation runs Apple's default guardrails
     /// even with .permissiveContentTransformations, so ordinary meeting talk can be refused.
     static func partFailure(_ error: Error) -> PartFailure {
+        // LanguageModelError exists only in the macOS 27 SDK (FoundationModels 2.x). CI builds with
+        // Xcode 26.x (FoundationModels 1.x), where the 1.5.1 tag failed to compile because of it.
+        #if canImport(FoundationModels, _version: 2.0)
         if #available(macOS 27, *), let e = error as? LanguageModelError {
             switch e {
             case .contextSizeExceeded: return .tooLong
@@ -174,6 +177,7 @@ enum Summarizer {
             default: break
             }
         }
+        #endif
         switch error as? LanguageModelSession.GenerationError {
         case .exceededContextWindowSize: return .tooLong
         case .decodingFailure: return .undecodable
