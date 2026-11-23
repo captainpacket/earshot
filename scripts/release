@@ -40,7 +40,11 @@ newer=0
 for i in 0 1 2; do
   if (( n[i] > c[i] )); then newer=1; break; elif (( n[i] < c[i] )); then break; fi
 done
-(( newer )) || die "$version is not newer than $current"
+# VERSION is bumped with the change, so the version to release may already be in it: allowed while untagged.
+if (( ! newer )); then
+  [[ $version == "$current" ]] && ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null \
+    || die "$version is not newer than $current"
+fi
 
 [[ $(git branch --show-current) == main ]] || die "release from main (on '$(git branch --show-current)')"
 notes=docs/releases/$version.md
