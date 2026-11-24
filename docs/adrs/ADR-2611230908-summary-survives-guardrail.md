@@ -1,6 +1,7 @@
 # ADR-2611230908: A summary survives a passage Apple's safety filter refuses
 
-**Status:** Accepted
+**Status:** Completed
+> 2026-11-23 Completed: landed on main at 896802d; gate `cd EarshotApp && swiftc -typecheck -parse-as-library -swift-version 5 -target arm64-apple-macosx26.4 *.swift && SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swiftc -sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk -plugin-path /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins -typecheck -parse-as-library -swift-version 5 -target arm64-apple-macosx26.4 *.swift && bash Tests/run.sh && grep -qx 1.5.3 ../VERSION` passed (hexa loop stage done)
 **Date:** 2026-11-23
 **Amends:** ADR-2611181715 (summaries are written part by part and merged)
 **Drivers:** The owner saw "Summary failed: Detected content likely to be unsafe" and got no summary at
