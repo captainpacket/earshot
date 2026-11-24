@@ -1231,7 +1231,6 @@ struct SettingsView: View {
     private var chosenMissing: Bool { !microphoneID.isEmpty && !inputs.contains { $0.uniqueID == microphoneID } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
         RecordingSettingsCards(
             microphoneID: $microphoneID,
             microphones: inputs.map { SettingsChoice(id: $0.uniqueID, name: $0.localizedName) },
@@ -1246,9 +1245,8 @@ struct SettingsView: View {
             identifySpeakers: $identifySpeakers,
             speakerCount: $speakerCount,
             summaryTemplate: $summaryTemplate,
-            templates: SummaryTemplate.all.map { SettingsChoice(id: $0.id, name: $0.name, icon: $0.icon) })
-        CallAudioSettingsSection()
-        }
+            templates: SummaryTemplate.all.map { SettingsChoice(id: $0.id, name: $0.name, icon: $0.icon) },
+            callAudioRows: AnyView(CallAudioSettingsRows()))
         .padding(.horizontal, 20)
         .padding(.vertical, 20)
         .onAppear { inputs = MicRecorder.inputs(); refreshLogin() }

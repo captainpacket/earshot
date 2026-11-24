@@ -2,7 +2,7 @@
 import AppKit
 import SwiftUI
 
-struct CallAudioSettingsSection: View {
+struct CallAudioSettingsRows: View {
     @AppStorage(CallAudioPrefs.source) private var stored = ""
     @State private var apps: [(id: String, name: String)] = []
     @State private var permission = CallAudioPrefs.permission
@@ -13,7 +13,7 @@ struct CallAudioSettingsSection: View {
 
     var body: some View {
         if CallAudioRules.settingVisible(osSupportsTap: CoreAudioTap.isSupported) {
-            SettingsSection("Call audio") {
+            Group {
                 SettingsRow("Record the other side from",
                             detail: "Adds the sound a call plays to your recording, from every app or from one. It can include other people's voices, so tell them, and only record where that is allowed. The audio stays on this Mac.") {
                     Picker("", selection: $stored) {
