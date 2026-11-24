@@ -1,7 +1,8 @@
 # ADR-2611240900: Record the other side of a call from a chosen audio source
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-11-24
+**Built:** logic, adapter, Settings and privacy wording in 7bc8558 (26 scenario tests pass, 19 bound to the sealed red at 6683172). Not yet run against a real call: the full app build needs cmake, and the tap has not been tried on a live Zoom or Teams call.
 **Drivers:** Earshot records one microphone only (`MicRecorder`, one `AVCaptureDeviceInput`). On headphones the
 remote participants are never recorded; on speakers they are recorded poorly, with echo. The owner wants
 Earshot to capture call audio from a source, without the user installing BlackHole or Loopback and building
