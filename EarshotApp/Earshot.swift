@@ -435,6 +435,7 @@ final class Library: ObservableObject {
                 Task { @MainActor in self.recordingFinished(rec, end: end) }
             }
             recorder = r
+            startCallAudio()
             r.start()
             recording = true
             startWatchingForEnd()
@@ -547,6 +548,39 @@ final class Library: ObservableObject {
         if endingIn != nil { endingIn = nil }  // @Published publishes on every assignment; only assign on change
     }
 
+    // MARK: Call audio (ADR-2611240900)
+
+    private var callTap: CoreAudioTap?
+    private var callSession: CallAudioSession?
+
+    private func startCallAudio() {
+        callTap = nil; callSession = nil
+        let stored = UserDefaults.standard.string(forKey: CallAudioPrefs.source) ?? ""
+        let source: CallAudioSource = stored == "all" ? .allSystem : stored.hasPrefix("app:") ? .app(String(stored.dropFirst(4))) : .none
+        guard source != .none else { return }
+        let tap = CoreAudioTap()
+        let session = CallAudioSession(tap: tap)
+        let permission = CallAudioPrefs.permission
+        session.begin(CallAudioContext(mode: .recordings, source: source, osSupportsTap: CoreAudioTap.isSupported,
+                                       permission: permission == .notAsked ? .granted : permission,  // macOS asks on first use
+                                       runningApps: Set(CoreAudioTap.runningApps().map(\.id))))
+        if session.tapRunning { callTap = tap; callSession = session; CallAudioPrefs.permission = .granted; log("call audio started") }
+        else if session.decision.tap != .none || session.decision.message != nil {
+            if session.decision.message?.contains("could not be started") == true { CallAudioPrefs.permission = .refused }
+            notice = session.decision.message
+            log("call audio not started")
+        }
+    }
+
+    private func finishCallAudio(into url: URL) {
+        guard let tap = callTap, let session = callSession else { return }
+        session.end()
+        let signal = tap.finish()
+        callTap = nil; callSession = nil
+        do { try CallAudioWav.merge(signal, into: url) }
+        catch { notice = "Call audio could not be added to the recording."; log("call audio merge failed") }
+    }
+
     private func recordingFinished(_ r: MicRecorder, end: RecordingEnd) {
         clearRecordingState()
         recorder = nil
@@ -561,7 +595,8 @@ final class Library: ObservableObject {
             log("recording ended by itself: \(m)")
             notice = m
         }
-        guard FileManager.default.fileExists(atPath: r.url.path) else { return }
+        guard FileManager.default.fileExists(atPath: r.url.path) else { callTap?.stop(); callTap = nil; callSession = nil; return }
+        finishCallAudio(into: r.url)
         saveMeetingNotes(for: r.url)
         reload()
         selection = r.url.lastPathComponent
@@ -1196,6 +1231,7 @@ struct SettingsView: View {
     private var chosenMissing: Bool { !microphoneID.isEmpty && !inputs.contains { $0.uniqueID == microphoneID } }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
         RecordingSettingsCards(
             microphoneID: $microphoneID,
             microphones: inputs.map { SettingsChoice(id: $0.uniqueID, name: $0.localizedName) },
@@ -1211,6 +1247,8 @@ struct SettingsView: View {
             speakerCount: $speakerCount,
             summaryTemplate: $summaryTemplate,
             templates: SummaryTemplate.all.map { SettingsChoice(id: $0.id, name: $0.name, icon: $0.icon) })
+        CallAudioSettingsSection()
+        }
         .padding(.horizontal, 20)
         .padding(.vertical, 20)
         .onAppear { inputs = MicRecorder.inputs(); refreshLogin() }
@@ -1601,6 +1639,13 @@ struct HelpView: View {
                 section("Try it yourself", "wifi.slash") {
                     para("Turn off Wi-Fi and record something. Transcription and summaries still work, "
                          + "because no step needs the internet.")
+                }
+
+                section("Recording the other side of a call", "phone.arrow.down.left") {
+                    para("In Settings, Call audio can add the sound a call plays to your recording, from every app "
+                         + "or from one. It is off until you choose a source. That audio stays on this Mac, like the "
+                         + "rest. It can include other people's voices, and getting their consent, or recording only "
+                         + "where the law allows it, is your responsibility.")
                 }
 
                 section("Download the speech models", "arrow.down.circle") {
