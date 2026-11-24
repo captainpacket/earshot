@@ -1,7 +1,6 @@
 ---
-name: hexa-ADR-search
+name: hexa-adr-search
 description: Search Architecture Decision Records by keyword, status, or date
-trigger: /hexa-ADR-search
 ---
 
 # Search ADRs
@@ -15,7 +14,7 @@ trigger: /hexa-ADR-search
    - **By status**: `grep -rl "Status.*{status}" docs/adrs/`
    - **By date**: `grep -rl "Date.*2026" docs/adrs/`
    - **Via CLI**: `hexa adr search {keyword}`
-   - **Via API**: `GET /api/adrs` then filter results
+   - **All, with status**: `hexa adr list`
 
 3. Display matching ADRs with:
    - ADR number and title
@@ -26,5 +25,5 @@ trigger: /hexa-ADR-search
 
 ## Example
 
-User: `/hexa-ADR-search sqlite`
+User: `/hexa-adr-search sqlite`
 -> Shows every ADR that mentions SQLite, with relevant snippets
