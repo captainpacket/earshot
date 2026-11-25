@@ -509,7 +509,12 @@ final class Library: ObservableObject {
                 }
             }
         }
-        let state = detector.ingest(level: micLevel(), at: t, otherAppCapturing: otherAppCapturing)
+        // Call audio counts as activity (ADR-2611241200): the louder of mic and call feeds the detector, and call
+        // audio above the speech threshold means the call is still going, whatever the microphone says.
+        let call = callTap?.level
+        var capturing = otherAppCapturing
+        if CallAudioActivity.callPlaying(call: call, threshold: detector.diagnostics.threshold) { capturing = true }
+        let state = detector.ingest(level: CallAudioActivity.fed(mic: micLevel(), call: call), at: t, otherAppCapturing: capturing)
         if t - lastQuietLog >= 15 {
             lastQuietLog = t
             let d = detector.diagnostics
@@ -548,31 +553,55 @@ final class Library: ObservableObject {
         if endingIn != nil { endingIn = nil }  // @Published publishes on every assignment; only assign on change
     }
 
-    // MARK: Call audio (ADR-2611240900)
+    // MARK: Call audio (ADR-2611240900, ADR-2611241100, ADR-2611241200)
 
-    private var callTap: CoreAudioTap?
+    private var callTap: CallAudioTap?
     private var callSession: CallAudioSession?
+    private var deviceObserver: NSObjectProtocol?
+
+    private func stopObservingDevices() {
+        if let o = deviceObserver { NotificationCenter.default.removeObserver(o) }
+        deviceObserver = nil
+    }
 
     private func startCallAudio() {
-        callTap = nil; callSession = nil
-        let stored = UserDefaults.standard.string(forKey: CallAudioPrefs.source) ?? ""
-        let source: CallAudioSource = stored == "all" ? .allSystem : stored.hasPrefix("app:") ? .app(String(stored.dropFirst(4))) : .none
+        callTap = nil; callSession = nil; stopObservingDevices()
+        let defaults = UserDefaults.standard
+        let source = CallAudioRules.effectiveSource(stored: defaults.string(forKey: CallAudioPrefs.source) ?? "",
+                                                    microphoneID: defaults.string(forKey: MicRecorder.settingKey) ?? "",
+                                                    defaultMicrophoneID: AVCaptureDevice.default(for: .audio)?.uniqueID)
         guard source != .none else { return }
-        let tap = CoreAudioTap()
+        let tap: CallAudioTap = source == .allSystem ? CoreAudioTap() : InputDeviceTap()
         let session = CallAudioSession(tap: tap)
         let permission = CallAudioPrefs.permission
         session.begin(CallAudioContext(mode: .recordings, source: source, osSupportsTap: CoreAudioTap.isSupported,
                                        permission: permission == .notAsked ? .granted : permission,  // macOS asks on first use
-                                       runningApps: Set(CoreAudioTap.runningApps().map(\.id))))
-        if session.tapRunning { callTap = tap; callSession = session; CallAudioPrefs.permission = .granted; log("call audio started") }
-        else if session.decision.tap != .none || session.decision.message != nil {
-            if session.decision.message?.contains("could not be started") == true { CallAudioPrefs.permission = .refused }
+                                       availableDevices: Set(MicRecorder.inputs().map(\.uniqueID))))
+        if session.tapRunning {
+            callTap = tap; callSession = session
+            if source == .allSystem { CallAudioPrefs.permission = .granted }
+            log("call audio started")
+            if case .device(let id) = source {
+                deviceObserver = NotificationCenter.default.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification,
+                                                                        object: nil, queue: .main) { [weak self] note in
+                    guard (note.object as? AVCaptureDevice)?.uniqueID == id else { return }
+                    MainActor.assumeIsolated {
+                        guard let self, let s = self.callSession else { return }
+                        s.deviceLost(id)
+                        self.notice = s.decision.message
+                        self.log("call audio device disconnected")
+                    }
+                }
+            }
+        } else if session.decision.message != nil {
+            if source == .allSystem, session.decision.message?.contains("could not be started") == true { CallAudioPrefs.permission = .refused }
             notice = session.decision.message
             log("call audio not started")
         }
     }
 
     private func finishCallAudio(into url: URL) {
+        stopObservingDevices()
         guard let tap = callTap, let session = callSession else { return }
         session.end()
         let signal = tap.finish()
@@ -595,7 +624,7 @@ final class Library: ObservableObject {
             log("recording ended by itself: \(m)")
             notice = m
         }
-        guard FileManager.default.fileExists(atPath: r.url.path) else { callTap?.stop(); callTap = nil; callSession = nil; return }
+        guard FileManager.default.fileExists(atPath: r.url.path) else { stopObservingDevices(); callTap?.stop(); callTap = nil; callSession = nil; return }
         finishCallAudio(into: r.url)
         saveMeetingNotes(for: r.url)
         reload()
@@ -1640,8 +1669,8 @@ struct HelpView: View {
                 }
 
                 section("Recording the other side of a call", "phone.arrow.down.left") {
-                    para("In Settings, Call audio can add the sound a call plays to your recording, from every app "
-                         + "or from one. It is off until you choose a source. That audio stays on this Mac, like the "
+                    para("In Settings, Call audio can add the sound a call plays to your recording, from all system "
+                         + "audio or from an input device. It is off until you choose a source. That audio stays on this Mac, like the "
                          + "rest. It can include other people's voices, and getting their consent, or recording only "
                          + "where the law allows it, is your responsibility.")
                 }

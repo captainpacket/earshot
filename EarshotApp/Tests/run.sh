@@ -114,3 +114,4 @@ swiftc -O -swift-version 5 -target arm64-apple-macosx26.4 -parse-as-library Bran
 "$out/window-layout-tests"
 # Call-audio spec scenarios S01-S26 (ADR-2611240900), run through node --test.
 node --test Tests/call-audio.test.mjs
+node --test Tests/call-audio-devices.test.mjs Tests/call-audio-stop.test.mjs

@@ -91,7 +91,7 @@ let scenarios: [String: () -> Bool] = [
     },
     "S09": {
         var r = Run()
-        r.go(seconds: 40, mic: { _ in silent }, call: { _ in silent }, other: true)
+        r.go(seconds: 100, mic: { _ in silent }, call: { _ in silent }, other: true)
         let releasedAt = r.t
         r.go(seconds: 200, mic: { _ in silent }, call: { _ in silent }, other: false)
         return r.endedAt != nil && r.endedAt! - releasedAt <= 70
@@ -129,7 +129,7 @@ let scenarios: [String: () -> Bool] = [
     },
     "S14": {
         var r = Run()
-        r.go(seconds: 40, mic: { _ in silent }, call: nil, other: true)
+        r.go(seconds: 100, mic: { _ in silent }, call: nil, other: true)
         let releasedAt = r.t
         r.go(seconds: 200, mic: { _ in silent }, call: nil, other: false)
         return r.endedAt != nil && r.endedAt! - releasedAt <= 70

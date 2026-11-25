@@ -48,9 +48,7 @@ struct RecordingSettingsCards: View {
                     SettingsBanner("This microphone isn't connected. Recordings use the system default until it is.")
                 }
                 callAudioRows
-                SettingsRow("Stop when quiet",
-                            detail: "Stops after this long with no one speaking, and warns you for the last 30 seconds. "
-                                + "During a call it stops about a minute after you leave the call.") {
+                SettingsRow("Stop when quiet", detail: CallAudioRules.stopWhenQuietDetail) {
                     menu($autoStopMinutes) {
                         Text("Never").tag(0)
                         ForEach([3, 5, 10, 15, 30], id: \.self) { Text("\($0) minutes").tag($0) }

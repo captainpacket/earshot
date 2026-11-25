@@ -1,10 +1,20 @@
-// The driven adapter for CallAudioTap (ADR-2611240900): a Core Audio process tap (macOS 14.2+).
-// Needs only the "System Audio Recording Only" permission (NSAudioCaptureUsageDescription), never Screen Recording.
-// Audio is held in memory and handed back as one AudioSignal at stop; nothing is written to disk here.
+// The driven adapters for CallAudioTap (ADR-2611240900, ADR-2611241100): a Core Audio process tap for all system
+// audio (macOS 14.2+, needs only "System Audio Recording Only", never Screen Recording), and a second capture
+// session for an input device (needs no permission beyond the microphone's). Audio is held in memory and handed
+// back as one AudioSignal at stop; nothing is written to disk here.
 import AppKit
 import AVFoundation
 import CoreAudio
 import Foundation
+
+/// Level in dB of a block of samples (RMS), -160 for silence.
+func callAudioLevel(_ samples: UnsafeBufferPointer<Float>) -> Float {
+    guard !samples.isEmpty else { return -160 }
+    var sum: Float = 0
+    for v in samples { sum += v * v }
+    let rms = (sum / Float(samples.count)).squareRoot()
+    return rms > 1e-8 ? 20 * log10(rms) : -160
+}
 
 final class CoreAudioTap: CallAudioTap, @unchecked Sendable {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
@@ -13,37 +23,21 @@ final class CoreAudioTap: CallAudioTap, @unchecked Sendable {
     private var format = AudioStreamBasicDescription()
     private let lock = NSLock()
     private var samples: [Float] = []
+    private var lastLevel: Float?
     private let queue = DispatchQueue(label: "earshot.call-audio-tap")
 
     static var isSupported: Bool {
         ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 14, minorVersion: 2, patchVersion: 0))
     }
 
-    /// Running apps the user can choose from: bundle id and name, regular apps only.
-    static func runningApps() -> [(id: String, name: String)] {
-        NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }
-            .compactMap { app in app.bundleIdentifier.map { ($0, app.localizedName ?? $0) } }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
+    var level: Float? { lock.lock(); defer { lock.unlock() }; return lastLevel }
 
     func start(_ plan: TapPlan) throws {
+        guard plan == .allSystem else { return }
         guard Self.isSupported, #available(macOS 14.2, *) else { throw AppError(message: "Call audio needs macOS 14.2 or later.") }
-        let description: CATapDescription
-        switch plan {
-        case .none: return
-        case .allSystem:
-            description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
-        case .app(let bundleID):
-            guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
-                  let object = Self.processObject(pid: app.processIdentifier) else {
-                throw AppError(message: "That app is not running.")
-            }
-            description = CATapDescription(stereoMixdownOfProcesses: [object])
-        }
+        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         description.muteBehavior = .unmuted
         description.isPrivate = true
-
         var tap = AudioObjectID(kAudioObjectUnknown)
         guard AudioHardwareCreateProcessTap(description, &tap) == noErr else {
             throw AppError(message: "Call audio could not be started. Check System Settings → Privacy & Security.")
@@ -74,14 +68,16 @@ final class CoreAudioTap: CallAudioTap, @unchecked Sendable {
 
     private func startIO() throws {
         let channels = Int(max(1, format.mChannelsPerFrame))
+        lock.lock(); lastLevel = -160; lock.unlock()
         guard AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, queue, { [weak self] _, input, _, _, _ in
             guard let self else { return }
             let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
             for b in buffers where b.mData != nil && b.mDataByteSize > 0 {
                 let count = Int(b.mDataByteSize) / MemoryLayout<Float>.size
-                let chunk = Array(UnsafeBufferPointer(start: b.mData!.assumingMemoryBound(to: Float.self), count: count))
+                let chunk = UnsafeBufferPointer(start: b.mData!.assumingMemoryBound(to: Float.self), count: count)
                 if Int(b.mNumberChannels) == channels || buffers.count == 1 {
-                    self.lock.lock(); self.samples += chunk; self.lock.unlock()
+                    let l = callAudioLevel(chunk)
+                    self.lock.lock(); self.samples += chunk; self.lastLevel = l; self.lock.unlock()
                 }
             }
         }) == noErr, let procID, AudioDeviceStart(aggregateID, procID) == noErr else {
@@ -91,7 +87,6 @@ final class CoreAudioTap: CallAudioTap, @unchecked Sendable {
 
     func stop() { teardown() }
 
-    /// Stops the tap and returns what it heard as one signal; empty when nothing was captured.
     func finish() -> AudioSignal {
         teardown()
         lock.lock(); defer { lock.unlock() }
@@ -109,16 +104,64 @@ final class CoreAudioTap: CallAudioTap, @unchecked Sendable {
         procID = nil
         if aggregateID != kAudioObjectUnknown { AudioHardwareDestroyAggregateDevice(aggregateID); aggregateID = AudioObjectID(kAudioObjectUnknown) }
         if tapID != kAudioObjectUnknown, #available(macOS 14.2, *) { AudioHardwareDestroyProcessTap(tapID); tapID = AudioObjectID(kAudioObjectUnknown) }
+        lock.lock(); lastLevel = nil; lock.unlock()
+    }
+}
+
+/// An audio input device (a virtual one such as BlackHole or Loopback, or any other) captured beside the microphone.
+final class InputDeviceTap: NSObject, CallAudioTap, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
+    private let session = AVCaptureSession()
+    private let output = AVCaptureAudioDataOutput()
+    private let queue = DispatchQueue(label: "earshot.call-audio-device")
+    private let lock = NSLock()
+    private var samples: [Float] = []
+    private var lastLevel: Float?
+    private var running = false
+
+    var level: Float? { lock.lock(); defer { lock.unlock() }; return running ? lastLevel : nil }
+
+    func start(_ plan: TapPlan) throws {
+        guard case .device(let id) = plan else { return }
+        guard let device = AVCaptureDevice(uniqueID: id) else { throw AppError(message: "That input device is not connected.") }
+        let input = try AVCaptureDeviceInput(device: device)
+        session.beginConfiguration()
+        guard session.canAddInput(input), session.canAddOutput(output) else {
+            session.commitConfiguration(); throw AppError(message: "\(device.localizedName) can't be used for call audio.")
+        }
+        session.addInput(input); session.addOutput(output)
+        output.audioSettings = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: CallAudioMix.outputRate,
+                                AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
+                                AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false]
+        output.setSampleBufferDelegate(self, queue: queue)
+        session.commitConfiguration()
+        lock.lock(); lastLevel = -160; running = true; lock.unlock()
+        queue.async { [session] in session.startRunning() }
     }
 
-    private static func processObject(pid: pid_t) -> AudioObjectID? {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject,
-                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var pid = pid, object = AudioObjectID(kAudioObjectUnknown)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address,
-                                                UInt32(MemoryLayout<pid_t>.size), &pid, &size, &object)
-        return status == noErr && object != kAudioObjectUnknown ? object : nil
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        var length = 0
+        var pointer: UnsafeMutablePointer<Int8>?
+        guard let block = CMSampleBufferGetDataBuffer(sampleBuffer),
+              CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &pointer) == noErr,
+              let pointer else { return }
+        let chunk = UnsafeBufferPointer(start: UnsafeRawPointer(pointer).assumingMemoryBound(to: Float.self),
+                                        count: length / MemoryLayout<Float>.size)
+        let l = callAudioLevel(chunk)
+        lock.lock(); samples += chunk; lastLevel = l; lock.unlock()
+    }
+
+    func stop() {
+        output.setSampleBufferDelegate(nil, queue: nil)
+        queue.async { [session] in if session.isRunning { session.stopRunning() } }
+        lock.lock(); running = false; lastLevel = nil; lock.unlock()
+    }
+
+    func finish() -> AudioSignal {
+        stop()
+        lock.lock(); defer { lock.unlock() }
+        let signal = AudioSignal(samples: samples, sampleRate: CallAudioMix.outputRate, channels: 1)
+        samples = []
+        return signal
     }
 }
 

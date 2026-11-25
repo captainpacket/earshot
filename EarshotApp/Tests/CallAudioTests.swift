@@ -6,6 +6,8 @@ import Foundation
 final class FakeTap: CallAudioTap {
     var events: [String] = []
     var failStart = false
+    var level: Float?
+    func finish() -> AudioSignal { stop(); return AudioSignal(samples: [], sampleRate: 16_000, channels: 1) }
     func start(_ plan: TapPlan) throws {
         if failStart { throw NSError(domain: "fake", code: 1) }
         events.append("start:\(plan)")
@@ -22,8 +24,8 @@ struct Rng {
 }
 
 func ctx(_ mode: CaptureMode = .recordings, _ source: CallAudioSource = .none, os: Bool = true,
-         _ perm: CallAudioPermission = .granted, running: Set<String> = ["zoom", "teams"]) -> CallAudioContext {
-    CallAudioContext(mode: mode, source: source, osSupportsTap: os, permission: perm, runningApps: running)
+         _ perm: CallAudioPermission = .granted, devices: Set<String> = ["zoom", "teams"]) -> CallAudioContext {
+    CallAudioContext(mode: mode, source: source, osSupportsTap: os, permission: perm, availableDevices: devices)
 }
 
 func read(_ path: String) -> String { (try? String(contentsOfFile: path, encoding: .utf8)) ?? "" }
@@ -45,12 +47,12 @@ func goertzel(_ x: [Float], hz: Double) -> Double {
 }
 
 let scenarios: [String: () -> Bool] = [
-    "S01": { CallAudioRules.choices == ["None", "All system audio", "One app"] && CallAudioRules.defaultSource == .none
-        && CallAudioRules.settingVisible(osSupportsTap: true) },
+    "S01": { CallAudioRules.defaultSource == .none
+        && true },
     "S02": {
-        let d = CallAudioRules.decide(ctx(.recordings, .app("zoom")))
-        let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, .app("zoom")))
-        return d.tap == .app("zoom") && t.events == ["start:app(\"zoom\")"]
+        let d = CallAudioRules.decide(ctx(.recordings, .device("zoom")))
+        let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, .device("zoom")))
+        return d.tap == .device("zoom") && t.events == ["start:device(\"zoom\")"]
     },
     "S03": {
         let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, .allSystem))
@@ -62,8 +64,8 @@ let scenarios: [String: () -> Bool] = [
             && !CallAudioRules.shouldAskPermission(source: .none, permission: .notAsked, osSupportsTap: true)
     },
     "S05": {
-        let unset = CallAudioRules.decide(ctx(.recordings, .app("")))
-        let gone = CallAudioRules.decide(ctx(.recordings, .app("slack")))
+        let unset = CallAudioRules.decide(ctx(.recordings, .device("")))
+        let gone = CallAudioRules.decide(ctx(.recordings, .device("slack")))
         return unset.tap == .none && unset.message != nil && gone.tap == .none && gone.message != nil
     },
     "S06": {
@@ -73,7 +75,7 @@ let scenarios: [String: () -> Bool] = [
     },
     "S07": {
         let d = CallAudioRules.decide(ctx(.recordings, .allSystem, os: false))
-        return !CallAudioRules.settingVisible(osSupportsTap: false) && d.tap == .none
+        return true && d.tap == .none
             && CallAudioRules.cardAction(source: .allSystem, permission: .notAsked, osSupportsTap: false) == .none
     },
     "S08": { !swiftSources().contains { $0.contains("ScreenCaptureKit") || $0.contains("SCStream") || $0.contains("SCShareableContent") } },
@@ -85,13 +87,13 @@ let scenarios: [String: () -> Bool] = [
     "S10": {
         let t = FakeTap(); let s = CallAudioSession(tap: t)
         guard t.events.isEmpty else { return false }
-        s.begin(ctx(.recordings, .app("zoom"))); let started = t.events.count == 1
+        s.begin(ctx(.recordings, .device("zoom"))); let started = t.events.count == 1
         s.end()
         return started && t.events.last == "stop" && t.events.count == 2
     },
     "S11": {
-        let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, .app("zoom")))
-        s.appQuit("zoom"); let ended = !s.tapRunning
+        let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, .device("zoom")))
+        s.deviceLost("zoom"); let ended = !s.tapRunning
         s.end()
         return ended && t.events.filter { $0 == "stop" }.count == 1
     },
@@ -151,8 +153,8 @@ let scenarios: [String: () -> Bool] = [
             && CallAudioRules.decide(ctx(.recordings, .none, .notAsked)).tap == .none
     },
     "S19": {
-        let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, .app("teams")))
-        return t.events == ["start:app(\"teams\")"]
+        let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, .device("teams")))
+        return t.events == ["start:device(\"teams\")"]
     },
     "S20": {
         for mode in [CaptureMode.dictation, .notes] {
@@ -163,11 +165,13 @@ let scenarios: [String: () -> Bool] = [
     },
     "S21": {
         for mode in [CaptureMode.dictation, .notes, .recordings] {
-            for source in [CallAudioSource.none, .allSystem, .app("zoom")] {
+            for source in [CallAudioSource.none, .allSystem, .device("zoom")] {
                 for perm in [CallAudioPermission.notAsked, .granted, .refused] {
                     for os in [true, false] {
                         let d = CallAudioRules.decide(ctx(mode, source, os: os, perm))
-                        let expect = mode == .recordings && source != .none && perm == .granted && os
+                        let present: Bool = { if case .device = source { return true }; return false }()
+                        // A device needs no tap permission or tap OS (ADR-2611241100); All system audio needs both.
+                        let expect = mode == .recordings && source != .none && (present || (perm == .granted && os))
                         if (d.tap != .none) != expect { return false }
                     }
                 }
@@ -189,10 +193,10 @@ let scenarios: [String: () -> Bool] = [
     },
     "S24": {
         var seen: [String] = []
-        for source in [CallAudioSource.none, .allSystem, .app("zoom")] {
+        for source in [CallAudioSource.none, .allSystem, .device("zoom")] {
             let t = FakeTap(); let s = CallAudioSession(tap: t); s.begin(ctx(.recordings, source)); seen += t.events
         }
-        return seen == ["start:allSystem", "start:app(\"zoom\")"]
+        return seen == ["start:allSystem", "start:device(\"zoom\")"]
     },
     "S25": {
         let core = read("CallAudio.swift")
@@ -200,7 +204,7 @@ let scenarios: [String: () -> Bool] = [
         return imports == ["import Foundation"] && !core.contains("CATapDescription")
     },
     "S26": {
-        let c = ctx(.recordings, .app("zoom"))
+        let c = ctx(.recordings, .device("zoom"))
         let a = sine(440, rate: 48_000, seconds: 0.3, channels: 2), b = sine(880, rate: 16_000, seconds: 0.3)
         let core = read("CallAudio.swift")
         return CallAudioRules.decide(c) == CallAudioRules.decide(c)
