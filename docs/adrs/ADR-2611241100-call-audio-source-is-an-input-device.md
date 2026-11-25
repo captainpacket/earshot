@@ -1,6 +1,7 @@
 # ADR-2611241100: The call-audio source is an input device or all system audio, in the Recording card
 
-**Status:** Proposed
+**Status:** Completed
+> 2026-11-24 Completed: built in aa24048. Gate `node --test EarshotApp/Tests/call-audio*.test.mjs` passes; the owner confirmed it on live calls in build 248.
 **Date:** 2026-11-24
 **Amends:** ADR-2611240900 (decisions 1 and 2; its decisions 3 to 7 stand)
 **Drivers:** The owner tried the first build. The picker listed None, All system audio and every regular app

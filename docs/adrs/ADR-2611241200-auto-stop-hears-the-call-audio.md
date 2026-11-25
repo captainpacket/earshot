@@ -1,6 +1,7 @@
 # ADR-2611241200: Stop-when-quiet hears the call audio, so a call you only listen to is not cut off
 
-**Status:** Proposed
+**Status:** Completed
+> 2026-11-24 Completed: built in aa24048. Gate `node --test EarshotApp/Tests/call-audio*.test.mjs` passes; the owner confirmed it on live calls in build 248.
 **Date:** 2026-11-24
 **Amends:** ADR-2611240900 and ADR-2611241100 (adds to them; nothing they decide changes)
 **Drivers:** Recording a call you only listen to. `EndOfMeetingDetector` is fed `micLevel()` (the
